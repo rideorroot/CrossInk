@@ -1,0 +1,7 @@
+# Manifest for src/components/icons/readStatusIcons.h — regenerate with:
+#   python3 scripts/generate_icons.py --library lucide \
+#     --manifest src/components/icons/readStatusIcons.manifest \
+#     --sizes 24,32 --stroke-width 2.5 --out src/components/icons/readStatusIcons.h
+# then clang-format -i the output.
+# A slightly heavier stroke keeps the check mark legible at 24 px on e-ink.
+book-check = book-check

@@ -16,6 +16,7 @@
 #include "ClippingStore.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "FinishedBooksStore.h"
 #include "RecentBookProgress.h"
 #include "RecentBooksStore.h"
 #include "activities/reader/BookReadingStats.h"
@@ -89,7 +90,10 @@ bool canSendNearby(const std::string& path) {
 
 void clearFileMetadata(const std::string& fullPath) {
   if (FsHelpers::hasEpubExtension(fullPath)) {
-    Epub(fullPath, "/.crosspoint").clearCache();
+    const Epub epub(fullPath, "/.crosspoint");
+    // The whole cache dir (stats included) goes away; a new file later added
+    // under the same name must not inherit the finished mark.
+    if (epub.clearCache()) FINISHED_BOOKS.onStatsRemoved(epub.getCachePath());
     BookmarkStore::deleteForFilePath(fullPath, "epub");
     ClippingStore::deleteForFilePath(fullPath, "epub");
   } else if (FsHelpers::hasXtcExtension(fullPath)) {

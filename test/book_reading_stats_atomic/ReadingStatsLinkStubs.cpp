@@ -11,3 +11,14 @@ void ReadingStatsDate::clear() {
 void recordReadingSpanIntoBuckets(std::array<uint32_t, READING_TIME_BUCKET_COUNT>&,
                                   std::array<uint32_t, READING_DAY_OF_WEEK_COUNT>&, const ReadingStatsDateTime&,
                                   uint32_t) {}
+
+// BookReadingStats keeps the finished-books index in sync; these tests cover
+// the stats file transaction only.
+#include "FinishedBooksStore.h"
+
+FinishedBooksStore& FinishedBooksStore::getInstance() {
+  static FinishedBooksStore instance;
+  return instance;
+}
+void FinishedBooksStore::onStatsSaved(const std::string&, bool) {}
+void FinishedBooksStore::onStatsRemoved(const std::string&) {}

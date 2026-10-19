@@ -124,6 +124,7 @@ The Browse Files screen acts as a file and folder browser. The full path to the 
 - **Open Selection:** Press **Confirm** to open a folder or start reading a selected book. Selecting a `.bmp` file will open the image viewer.
 - **Delete Files or Folders:** Hold and release **Confirm** to open the selected file or folder action menu, then choose **Delete**. You will be given an option to either confirm or cancel. Folder deletion is limited to empty folders.
 - **Book Actions:** EPUB and XTC files can also show options such as **Delete Cache**, **Mark Finished**, and **Track Reading Stats** from the same action menu. Turning tracking off for a book keeps its saved stats; it only stops new tracking for that book.
+- **Finished Books:** Books marked as finished show a book icon with a check mark, so read books can stay in their category folders. Folders show how many of the books inside them (including sub-folders) are finished, for example `4/12`; turn this off with **Show Read Count on Folders** under **Settings > System > Files & Cache**.
 
 ### 3.4 Library Screen
 
@@ -440,7 +441,7 @@ which status-bar items are shown.
   real-time clock also expose clock format, UTC offset, and a sync action.
 
 - **Files & Cache**: Configure hidden files, file extensions, file-browser view,
-  finished-book behavior, and clear the reading cache.
+  folder read counts, finished-book behavior, and clear the reading cache.
 
 - **Reading Stats**: Turn device-wide stats tracking on or off, configure
   idle-time filtering, and access all-time stats backup/reset actions. Turning

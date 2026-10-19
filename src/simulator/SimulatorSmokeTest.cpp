@@ -30,17 +30,20 @@
 
 #include "CrossPointSettings.h"
 #include "DeviceCapabilities.h"
+#include "FinishedBooksStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/home/BookActions.h"
 #include "activities/home/HomeActivity.h"
 #include "activities/home/RecentBookProgress.h"
 #include "activities/library/LibraryActivity.h"
 #include "activities/reader/BookReadingStats.h"
 #include "activities/reader/EpubReaderDrawerActivity.h"
+#include "activities/reader/GlobalReadingStats.h"
 #include "activities/reader/ReaderFontLoading.h"
 #include "activities/reader/ReaderUtils.h"
 #include "activities/reader/SideButtonShortcuts.h"
@@ -53,6 +56,7 @@
 #include "components/UITheme.h"
 #include "simulator/SimulatorHomeKeyInput.h"
 #include "util/ButtonShortcutController.h"
+#include "util/FolderReadCounts.h"
 
 extern ActivityManager activityManager;
 extern GfxRenderer renderer;
@@ -95,6 +99,12 @@ enum class SmokeStep : uint8_t {
   ThemeFresh,
   StatusBarEditor,
   StatusBarPicker,
+  ReadMarksRoot,
+  ReadMarksFolder,
+  ReadMarksUnmarked,
+  ReadMarksCountOff,
+  ReadMarksSettingsOpen,
+  ReadMarksSettings,
   Done,
 };
 
@@ -182,6 +192,7 @@ class SimulatorSmokeTest {
   uint64_t carouselScreenHash = 0;
   unsigned frontlightLayoutPass = 0;
   unsigned homeThemePass = 0;
+  uint32_t readMarksCompletedBefore = 0;
   uint64_t homeThemeScreenHash = 0;
   std::string homeThemeBookPath;
 
@@ -356,6 +367,85 @@ class SimulatorSmokeTest {
       for (int x = 0; x < width; ++x) std::fputc(renderer.isPixelBlack(x, y) ? 0 : 255, image);
     }
     std::fclose(image);
+  }
+
+  // ---- Finished-book marks in the file browser -----------------------------
+  static constexpr const char* READ_MARKS_ROOT = "/Bibliothek";
+  static constexpr const char* READ_MARKS_BOOKS[] = {
+      "/Bibliothek/Fantasy/Der Hobbit.epub",
+      "/Bibliothek/Fantasy/Die Nebel von Avalon.epub",
+      "/Bibliothek/Fantasy/Tolkien/Das Silmarillion.epub",
+      "/Bibliothek/Krimi/Der Name der Rose.epub",
+      "/Bibliothek/Krimi/Mord im Orient-Express.epub",
+      "/Bibliothek/Klassiker/Faust.epub",
+      "/Bibliothek/Einzelband.epub",
+  };
+
+  static void captureReadMarksScreen(const char* name) {
+    const char* output = std::getenv("CROSSINK_SIMULATOR_SMOKE_READ_MARKS_CAPTURES");
+    if (!output) return;
+    RenderLock lock;
+    std::filesystem::create_directories(output);
+    const auto path = std::filesystem::path(output) / (std::string(name) + ".pgm");
+    FILE* image = std::fopen(path.c_str(), "wb");
+    if (!image) fail("Cannot create read-marks capture");
+    const int width = renderer.getScreenWidth();
+    const int height = renderer.getScreenHeight();
+    std::fprintf(image, "P5\n%d %d\n255\n", width, height);
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) std::fputc(renderer.isPixelBlack(x, y) ? 0 : 255, image);
+    }
+    std::fclose(image);
+  }
+
+  static void expectFolderCounts(const char* path, const uint16_t finished, const uint16_t total) {
+    FolderReadCounts::Counts counts;
+    if (!FolderReadCounts::compute(path, counts)) fail("Folder counts unavailable for %s", path);
+    if (counts.finished != finished || counts.total != total) {
+      fail("Folder counts for %s: got %u/%u, expected %u/%u", path, counts.finished, counts.total, finished, total);
+    }
+  }
+
+  static void toggleFinished(const char* path, const bool expectFinished) {
+    bool completed = !expectFinished;
+    if (!BookActions::toggleBookCompleted(path, path, completed) || completed != expectFinished) {
+      fail("Could not toggle finished state for %s", path);
+    }
+    if (FINISHED_BOOKS.isFinishedBook(path) != expectFinished) fail("Finished index out of sync for %s", path);
+  }
+
+  void startReadMarksScenario() {
+    SETTINGS.trackReadingStats = 1;
+    SETTINGS.moveFinishedToReadFolder = 0;
+    SETTINGS.fileBrowserFolderReadCount = 1;
+    SETTINGS.hideFileExtension = 1;
+    for (const char* dir : {"/Bibliothek", "/Bibliothek/Fantasy", "/Bibliothek/Fantasy/Tolkien", "/Bibliothek/Krimi",
+                            "/Bibliothek/Klassiker", "/Bibliothek/Leer"}) {
+      if (!Storage.exists(dir) && !Storage.mkdir(dir)) fail("Cannot create %s", dir);
+    }
+    for (const char* book : READ_MARKS_BOOKS) {
+      if (!Storage.writeFile(book, "read-marks fixture")) fail("Cannot create %s", book);
+    }
+    // Text files cannot be marked as finished, so they must not count.
+    if (!Storage.writeFile("/Bibliothek/Klassiker/Notizen.txt", "notes")) fail("Cannot create notes fixture");
+    library::invalidateLibraryIndex();
+
+    readMarksCompletedBefore = GlobalReadingStats::load().completedBooks;
+    toggleFinished("/Bibliothek/Fantasy/Der Hobbit.epub", true);
+    toggleFinished("/Bibliothek/Fantasy/Tolkien/Das Silmarillion.epub", true);
+    toggleFinished("/Bibliothek/Krimi/Der Name der Rose.epub", true);
+    if (GlobalReadingStats::load().completedBooks != readMarksCompletedBefore + 3) {
+      fail("Manual finished marks were not counted in reading stats");
+    }
+    if (!Storage.exists("/.crosspoint/finished_books.bin")) fail("Finished-books index was not written");
+
+    expectFolderCounts("/Bibliothek/Fantasy", 2, 3);
+    expectFolderCounts("/Bibliothek/Fantasy/Tolkien", 1, 1);
+    expectFolderCounts("/Bibliothek/Krimi", 1, 2);
+    expectFolderCounts("/Bibliothek/Klassiker", 0, 1);
+    expectFolderCounts("/Bibliothek/Leer", 0, 0);
+    expectFolderCounts(READ_MARKS_ROOT, 3, 7);
+    LOG_INF("SMOKE", "Read marks: index, stats and folder counts passed");
   }
 
   static void verifyReaderControlsSettings() {
@@ -1228,6 +1318,12 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_READ_MARKS")) {
+          startReadMarksScenario();
+          activityManager.goToFileBrowser(READ_MARKS_ROOT);
+          queueStep("Read marks: library root", SmokeStep::ReadMarksRoot, 4);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_STATUS_BARS")) {
           verifyStatusBarSettings();
           SETTINGS.clockDateHasBeenSynced = true;
@@ -2056,6 +2152,59 @@ class SimulatorSmokeTest {
         step = SmokeStep::ThemeHome;
         break;
       }
+
+      case SmokeStep::ReadMarksRoot:
+        captureReadMarksScreen("1-bibliothek");
+        activityManager.goToFileBrowser("/Bibliothek/Fantasy");
+        queueStep("Read marks: Fantasy folder", SmokeStep::ReadMarksFolder, 4);
+        break;
+
+      case SmokeStep::ReadMarksFolder:
+        captureReadMarksScreen("2-fantasy");
+        // Unmarking must update the icon, the folder counts and the stats.
+        toggleFinished("/Bibliothek/Fantasy/Der Hobbit.epub", false);
+        if (GlobalReadingStats::load().completedBooks != readMarksCompletedBefore + 2) {
+          fail("Unmarking a book did not update reading stats");
+        }
+        expectFolderCounts("/Bibliothek/Fantasy", 1, 3);
+        expectFolderCounts(READ_MARKS_ROOT, 2, 7);
+        activityManager.goToFileBrowser(READ_MARKS_ROOT);
+        queueStep("Read marks: after unmark", SmokeStep::ReadMarksUnmarked, 4);
+        break;
+
+      case SmokeStep::ReadMarksUnmarked:
+        captureReadMarksScreen("3-nach-entmarkieren");
+        SETTINGS.fileBrowserFolderReadCount = 0;
+        activityManager.goToFileBrowser(READ_MARKS_ROOT);
+        queueStep("Read marks: counts off", SmokeStep::ReadMarksCountOff, 4);
+        break;
+
+      case SmokeStep::ReadMarksCountOff: {
+        captureReadMarksScreen("4-zaehler-aus");
+        SETTINGS.fileBrowserFolderReadCount = 1;
+        const auto filesCache = buildSystemFilesCacheSettingsList(getSettingsList());
+        const auto it = std::find_if(filesCache.begin(), filesCache.end(),
+                                     [](const auto& item) { return item.nameId == StrId::STR_FOLDER_READ_COUNT; });
+        if (it == filesCache.end()) fail("Folder read count toggle missing from Files & Cache");
+        activityManager.replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInputManager));
+        queueStep("Read marks: settings root", SmokeStep::ReadMarksSettingsOpen, 4);
+        break;
+      }
+
+      case SmokeStep::ReadMarksSettingsOpen: {
+        {
+          RenderLock lock;
+          auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
+          settings->simulatorOpenSubmenu(3, SettingAction::SystemFilesCache, StrId::STR_FOLDER_READ_COUNT);
+        }
+        queueStep("Read marks: Files & Cache", SmokeStep::ReadMarksSettings, 4);
+        break;
+      }
+
+      case SmokeStep::ReadMarksSettings:
+        captureReadMarksScreen("5-einstellungen");
+        LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
+        std::_Exit(0);
 
       case SmokeStep::Done:
         if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL && carouselCachePass == 0 &&

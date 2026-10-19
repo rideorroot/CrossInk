@@ -120,6 +120,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, bool readMetadat
 // builds remain retryable. Results a rescan would repeat, such as skipped
 // unreadable files or a capped duplicate tracker, do not re-dirty the index.
 void invalidateLibraryIndex();
+// Monotonic counter bumped by invalidateLibraryIndex(); survives index rebuilds.
+uint32_t fileTreeGeneration();
 bool libraryIndexNeedsRefresh();
 // Boot-only: called after validating a clean scan retained across deep sleep.
 void restoreLibraryIndexAfterSleep();

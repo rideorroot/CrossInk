@@ -50,6 +50,8 @@ class FileBrowserActivity final : public Activity {
   bool showFileSelection = true;
 
   bool lockLongPressBack = false;
+  // Set once a slow folder-count walk has shown the loading popup for this load.
+  bool folderCountPopupShown = false;
   bool longPressBackHandled = false;
   bool longPressConfirmHandled = false;
   bool pendingCompletedFeedback = false;
@@ -65,6 +67,11 @@ class FileBrowserActivity final : public Activity {
   static constexpr size_t INDEX_ROW_CACHE_SIZE = 32;
   std::string basepath = "/";
   std::vector<std::string> files;
+  // Per-row "finished << 16 | total" for directory rows in `files`; UNKNOWN when
+  // not counted. Kept per activity so a long folder walk cannot evict rows that
+  // are on screen from the shared counts cache.
+  static constexpr uint32_t FOLDER_COUNT_UNKNOWN = 0xFFFFFFFFu;
+  std::vector<uint32_t> folderCounts;
   std::unique_ptr<char[]> fileNameBuffer;
   std::unique_ptr<FileIndex> fileIndex;
   std::unique_ptr<FileIndex::Entry> indexEntry;
@@ -104,6 +111,9 @@ class FileBrowserActivity final : public Activity {
   size_t entryCount() const;
   const char* entryNameAt(size_t row);
   void toggleHiddenFiles();
+  // Fills the folder read-count cache for directory rows (Books mode only).
+  void precomputeFolderReadCounts();
+  static void onSlowFolderCountWalk(void* user);
   size_t findEntry(const std::string& name);
 
  public:

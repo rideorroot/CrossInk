@@ -22,6 +22,7 @@ The main data directory is `.crosspoint` on the SD card. It stores render caches
 ├── state.json              # Last-opened book and sleep/session state
 ├── state.bin.bak           # Legacy binary state file after migration, if present
 ├── recent.json             # Reading history for Home and Library
+├── finished_books.bin      # Index of finished books (rebuilt from per-book stats if missing)
 ├── library.idx             # Library titles, authors, paths and sort indexes
 ├── library.meta            # Library EPUB metadata cache: slot table
 ├── library.metd            # Library EPUB metadata cache: parsed metadata records

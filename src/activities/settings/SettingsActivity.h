@@ -329,6 +329,14 @@ class SettingsActivity final : public Activity {
 #ifdef SIMULATOR
   int simulatorCategoryIndex() const { return selectedCategoryIndex; }
   int simulatorSelectedIndex() const { return selectedSettingIndex; }
+  void simulatorOpenSubmenu(const int categoryIndex, const SettingAction action, const StrId focus) {
+    enterCategory(categoryIndex);
+    openSubmenu(action);
+    for (int i = 0; i < settingsCount; ++i) {
+      if ((*currentSettings)[i].nameId == focus) selectedSettingIndex = i + 1;
+    }
+    requestUpdate();
+  }
 #endif
   void onEnter() override;
   void onExit() override;

@@ -23,6 +23,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "FileBrowserActionActivity.h"
+#include "FinishedBooksStore.h"
 #include "MappedInputManager.h"
 #include "activities/boot_sleep/ImageFolderIndex.h"
 #include "activities/reader/EpubReaderActivity.h"
@@ -36,9 +37,11 @@
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/listIcons.h"
+#include "components/icons/readStatusIcons.h"
 #include "components/themes/minimal/MinimalTheme.h"
 #include "fontIds.h"
 #include "util/BookMoveUtils.h"
+#include "util/FolderReadCounts.h"
 
 namespace fui = freeink::ui;
 
@@ -284,6 +287,7 @@ void FileBrowserActivity::loadFiles() {
 
 void FileBrowserActivity::loadFilesLocked() {
   usingIndex = false;
+  folderCounts.clear();
   clearIndexNameCache();
   fileListMemoryLimited = false;
   fileListReadFailed = false;
@@ -296,6 +300,7 @@ void FileBrowserActivity::loadFilesLocked() {
 
   if (!overflow || fileListMemoryLimited) {
     FsHelpers::sortFileList(files);
+    precomputeFolderReadCounts();
     return;
   }
 
@@ -328,6 +333,33 @@ void FileBrowserActivity::loadFilesLocked() {
   overflow = false;
   loadFilesIntoVector(INDEX_THRESHOLD, overflow);
   FsHelpers::sortFileList(files);
+  precomputeFolderReadCounts();
+}
+
+void FileBrowserActivity::onSlowFolderCountWalk(void* user) {
+  auto* self = static_cast<FileBrowserActivity*>(user);
+  if (self->folderCountPopupShown) return;
+  self->folderCountPopupShown = true;
+  GUI.drawPopup(self->renderer, tr(STR_LOADING_POPUP));
+}
+
+void FileBrowserActivity::precomputeFolderReadCounts() {
+  if (mode != Mode::Books || !SETTINGS.fileBrowserFolderReadCount || usingIndex) return;
+  folderCountPopupShown = false;
+  folderCounts.assign(files.size(), FOLDER_COUNT_UNKNOWN);
+  // Each walk reports itself when slow; this also covers many small folders
+  // that add up to a noticeable delay together.
+  const unsigned long start = millis();
+  for (size_t i = 0; i < files.size(); ++i) {
+    const std::string& entry = files[i];
+    if (entry.empty() || entry.back() != '/') continue;
+    if (millis() - start > 300) onSlowFolderCountWalk(this);
+    FolderReadCounts::Counts counts;
+    if (FolderReadCounts::compute(normalizeDirectoryPath(buildFullPath(basepath, entry)), counts,
+                                  &FileBrowserActivity::onSlowFolderCountWalk, this)) {
+      folderCounts[i] = (static_cast<uint32_t>(counts.finished) << 16) | counts.total;
+    }
+  }
 }
 
 size_t FileBrowserActivity::entryCount() const {
@@ -376,6 +408,10 @@ void FileBrowserActivity::onEnter() {
   selectorIndex = 0;
   showFileSelection = true;
 
+  if (mode == Mode::Books) {
+    FINISHED_BOOKS.warmUp();
+  }
+
   // If Confirm was held while this activity opened (typical when launched from a menu), ignore
   // its release — otherwise we'd immediately auto-open whatever is at index 0.
   lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
@@ -421,6 +457,8 @@ void FileBrowserActivity::onEnter() {
 void FileBrowserActivity::onExit() {
   Activity::onExit();
   files.clear();
+  folderCounts.clear();
+  folderCounts.shrink_to_fit();
   fileNameBuffer.reset();
   fileIndex.reset();
   indexEntry.reset();
@@ -1397,6 +1435,29 @@ void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
     names[i] = getFileName(entry);
     if (SETTINGS.hideFileExtension == 0) values[i] = getFileExtension(entry);
     const std::string fullPath = buildFullPath(basepath, entry);
+    const bool isDirectoryRow = entry.back() == '/';
+    if (isDirectoryRow && mode == Mode::Books && SETTINGS.fileBrowserFolderReadCount) {
+      FolderReadCounts::Counts counts;
+      bool known = false;
+      if (!usingIndex) {
+        // Counted in loadFilesLocked().
+        const uint32_t packed = entryIndex < folderCounts.size() ? folderCounts[entryIndex] : FOLDER_COUNT_UNKNOWN;
+        known = packed != FOLDER_COUNT_UNKNOWN;
+        counts.finished = static_cast<uint16_t>(packed >> 16);
+        counts.total = static_cast<uint16_t>(packed & 0xFFFFu);
+      } else {
+        // Very large folders (FileIndex mode) count lazily per visible row and
+        // then hit the shared cache.
+        known = FolderReadCounts::compute(normalizeDirectoryPath(fullPath), counts);
+      }
+      if (known && counts.total > 0) {
+        char countText[16];
+        snprintf(countText, sizeof(countText), "%u/%u", static_cast<unsigned>(counts.finished),
+                 static_cast<unsigned>(counts.total));
+        values[i] = countText;
+      }
+    }
+    const bool finishedBook = !isDirectoryRow && mode == Mode::Books && FINISHED_BOOKS.isFinishedBook(fullPath);
     if (isPinnedBootFavorite(fullPath)) {
       values[i] = values[i].empty() ? "⏻" : "⏻ " + values[i];
     }
@@ -1406,7 +1467,8 @@ void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
     fui::ListItem item;
     item.label = names[i].c_str();
     if (!values[i].empty()) item.value = values[i].c_str();
-    item.icon = listIconFor(UITheme::getFileIcon(entry), twoLineRows ? 32 : 24);
+    item.icon = finishedBook ? fui::bitmapFromIcon(twoLineRows ? icon_book_check_32 : icon_book_check_24)
+                             : listIconFor(UITheme::getFileIcon(entry), twoLineRows ? 32 : 24);
     item.actionValue = static_cast<int16_t>(usesVirtualList ? entryIndex : i);
     items.push_back(item);
   }

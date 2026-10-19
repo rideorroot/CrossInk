@@ -642,6 +642,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t libraryHideFinishedBooks = 0;
   // Hide file extensions in the file browser right-side value column (0 = show, 1 = hide)
   uint8_t hideFileExtension = 0;
+  // Show "finished/total" book counts next to folders in the file browser (0 = off, 1 = on)
+  uint8_t fileBrowserFolderReadCount = 1;
   // File browser display row style (0 = one-line theme list, 1 = two-line compact display)
   uint8_t fileBrowserDisplay = FILE_BROWSER_DISPLAY_1_LINE;
   // Remove a book from the Recent Books list when its End-of-Book screen is reached (0 = off, 1 = on)

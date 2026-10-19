@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### Added
+
+- File Browser shows books marked as finished with a book-with-check-mark icon, so a complete, categorised library can stay in place instead of moving read books to a separate folder.
+- File Browser folders show how many of their books (including sub-folders) are finished, e.g. "4/12". Toggle it under System > Files & Cache > Show Read Count on Folders.
+
 ## [v1.6.1] - 2026-10-03
 
 ### Added

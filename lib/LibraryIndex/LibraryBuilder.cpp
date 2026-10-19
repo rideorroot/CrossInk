@@ -1833,7 +1833,16 @@ namespace {
 std::atomic<bool> indexDirty{true};
 }
 
-void invalidateLibraryIndex() { indexDirty.store(true, std::memory_order_relaxed); }
+// Counts every file-tree mutation the app reports. Unlike indexDirty it is
+// never reset, so other caches (e.g. folder read counts) can detect changes.
+static std::atomic<uint32_t> fileTreeGenerationCounter{0};
+
+void invalidateLibraryIndex() {
+  indexDirty.store(true, std::memory_order_relaxed);
+  fileTreeGenerationCounter.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint32_t fileTreeGeneration() { return fileTreeGenerationCounter.load(std::memory_order_relaxed); }
 
 bool libraryIndexNeedsRefresh() { return indexDirty.load(std::memory_order_relaxed); }
 

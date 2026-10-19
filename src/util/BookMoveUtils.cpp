@@ -15,6 +15,7 @@
 #include "BookmarkStore.h"
 #include "ClippingStore.h"
 #include "CrossPointState.h"
+#include "FinishedBooksStore.h"
 #include "RecentBooksStore.h"
 
 namespace {
@@ -185,10 +186,13 @@ RenameMigrationResult migrateRenamedBookState(const std::string& oldPath, const 
       LOG_ERR("BookMove", "Failed to restore bookmark metadata after rename: %s", newPath.c_str());
       rolledBack = false;
     }
-    if (cacheMoved && Storage.exists(newCachePath.c_str()) &&
-        !Storage.rename(newCachePath.c_str(), oldCachePath.c_str())) {
-      LOG_ERR("BookMove", "Failed to roll back cache migration %s -> %s", newCachePath.c_str(), oldCachePath.c_str());
-      rolledBack = false;
+    if (cacheMoved && Storage.exists(newCachePath.c_str())) {
+      if (!Storage.rename(newCachePath.c_str(), oldCachePath.c_str())) {
+        LOG_ERR("BookMove", "Failed to roll back cache migration %s -> %s", newCachePath.c_str(), oldCachePath.c_str());
+        rolledBack = false;
+      } else {
+        FINISHED_BOOKS.onCacheDirRenamed(newCachePath, oldCachePath);
+      }
     }
     return rolledBack;
   };
@@ -254,6 +258,7 @@ RenameMigrationResult migrateRenamedBookState(const std::string& oldPath, const 
       return recover();
     }
     cacheMoved = true;
+    FINISHED_BOOKS.onCacheDirRenamed(oldCachePath, newCachePath);
   }
 
   library::invalidateLibraryIndex();
@@ -293,6 +298,8 @@ bool migrateMovedEpubState(const std::string& oldPath, const std::string& newPat
       LOG_ERR("BookMove", "Failed to rename cache dir %s -> %s (non-fatal)", oldCachePath.c_str(),
               newCachePath.c_str());
       ok = false;
+    } else {
+      FINISHED_BOOKS.onCacheDirRenamed(oldCachePath, newCachePath);
     }
   }
 

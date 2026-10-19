@@ -6,6 +6,7 @@
 
 #include <cstring>
 
+#include "FinishedBooksStore.h"
 #include "util/FileContentEquals.h"
 
 namespace {
@@ -306,7 +307,10 @@ bool BookReadingStats::save(const std::string& cachePath) const {
 
   // Reader exit saves unconditionally; a quick open-and-close changes nothing.
   const bool unchanged = fileContentEquals("STATS", statsPath.c_str(), data, sizeof(data));
-  if (unchanged) return true;
+  if (unchanged) {
+    FINISHED_BOOKS.onStatsSaved(cachePath, isCompleted);
+    return true;
+  }
 
   // Write to a temp file and rename into place so a save interrupted mid-write
   // (silent restart, SD contention, power loss) can never leave stats_v5.bin
@@ -372,6 +376,7 @@ bool BookReadingStats::save(const std::string& cachePath) const {
   if (hadOriginal && Storage.exists(backupPath.c_str()) && !Storage.remove(backupPath.c_str())) {
     LOG_ERR("STATS", "Could not remove completed stats backup: %s", backupPath.c_str());
   }
+  FINISHED_BOOKS.onStatsSaved(cachePath, isCompleted);
   return true;
 }
 
@@ -407,5 +412,6 @@ bool BookReadingStats::remove(const std::string& cachePath) {
     LOG_ERR("STATS", "Could not delete %s", statsFileName.c_str());
     ok = false;
   }
+  if (ok) FINISHED_BOOKS.onStatsRemoved(cachePath);
   return ok;
 }
