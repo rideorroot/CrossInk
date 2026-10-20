@@ -46,8 +46,8 @@ class EpubReaderActivity final : public Activity {
     uint8_t lineHeightPercent = 100;
     uint8_t wordSpacing = 0;
     uint8_t orientation = 0;
-    uint8_t screenMarginVertical = 5;
-    uint8_t screenMarginHorizontal = 5;
+    uint8_t screenMarginTop = 5;
+    uint8_t screenMarginLeft = 5;
     uint8_t publisherPageNumbers = 0;
     uint8_t paragraphAlignment = 0;
     uint8_t embeddedStyle = 1;
@@ -61,6 +61,9 @@ class EpubReaderActivity final : public Activity {
     uint8_t epubRenderMode = 0;
     uint8_t indexingMethod = CrossPointSettings::INDEXING_FULL_SECTION;
     char sdFontFamilyName[64] = "";
+    // Stored after the legacy fields (file version 11+).
+    uint8_t screenMarginBottom = 5;
+    uint8_t screenMarginRight = 5;
   };
 
   struct BookReaderSettingsData {

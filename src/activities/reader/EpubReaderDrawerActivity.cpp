@@ -636,8 +636,10 @@ ReaderSettingsDraft EpubReaderDrawerActivity::captureSettings() {
   std::strncpy(value.sdFontFamilyName.data(), SETTINGS.sdFontFamilyName, value.sdFontFamilyName.size() - 1);
   value.lineHeightPercent = SETTINGS.lineHeightPercent;
   value.wordSpacing = SETTINGS.wordSpacing;
-  value.screenMarginVertical = SETTINGS.screenMarginVertical;
-  value.screenMarginHorizontal = SETTINGS.screenMarginHorizontal;
+  value.screenMarginTop = SETTINGS.screenMarginTop;
+  value.screenMarginBottom = SETTINGS.screenMarginBottom;
+  value.screenMarginLeft = SETTINGS.screenMarginLeft;
+  value.screenMarginRight = SETTINGS.screenMarginRight;
   value.orientation = SETTINGS.orientation;
   value.paragraphAlignment = SETTINGS.paragraphAlignment;
   value.textAntiAliasing = SETTINGS.textAntiAliasing;
@@ -661,8 +663,10 @@ void EpubReaderDrawerActivity::applySettings(const ReaderSettingsDraft& value) {
   SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
   SETTINGS.lineHeightPercent = value.lineHeightPercent;
   SETTINGS.wordSpacing = value.wordSpacing;
-  SETTINGS.screenMarginVertical = value.screenMarginVertical;
-  SETTINGS.screenMarginHorizontal = value.screenMarginHorizontal;
+  SETTINGS.screenMarginTop = value.screenMarginTop;
+  SETTINGS.screenMarginBottom = value.screenMarginBottom;
+  SETTINGS.screenMarginLeft = value.screenMarginLeft;
+  SETTINGS.screenMarginRight = value.screenMarginRight;
   SETTINGS.orientation = value.orientation;
   SETTINGS.paragraphAlignment = value.paragraphAlignment;
   SETTINGS.textAntiAliasing = value.textAntiAliasing;
@@ -755,8 +759,8 @@ void EpubReaderDrawerActivity::onSliderEvent(const fui::ActionEvent& event, void
       self->draft.lineHeightPercent = CrossPointSettings::clampedLineHeightPercent(
           tapValue(value, CrossPointSettings::MIN_LINE_HEIGHT_PERCENT, CrossPointSettings::MAX_LINE_HEIGHT_PERCENT));
     }
-  } else if (self->state.pane == ReaderDrawerPane::Margins) {
-    auto& target = second ? self->draft.screenMarginHorizontal : self->draft.screenMarginVertical;
+  } else if (self->state.pane == ReaderDrawerPane::Margins || self->state.pane == ReaderDrawerPane::MarginsSides) {
+    auto& target = self->marginSliderTarget(second);
     target = tapValue(
         percentToByte(event.dragPermille, CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN),
         CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN);
@@ -791,10 +795,10 @@ void EpubReaderDrawerActivity::onStepEvent(const fui::ActionEvent& event, void* 
     if (self->state.pane == ReaderDrawerPane::Spacing) {
       self->draft.wordSpacing =
           std::clamp<int>(self->draft.wordSpacing + event.value, 0, CrossPointSettings::MAX_WORD_SPACING);
-    } else if (self->state.pane == ReaderDrawerPane::Margins) {
-      self->draft.screenMarginHorizontal =
-          std::clamp<int>(self->draft.screenMarginHorizontal + event.value, CrossPointSettings::MIN_SCREEN_MARGIN,
-                          CrossPointSettings::MAX_SCREEN_MARGIN);
+    } else if (self->state.pane == ReaderDrawerPane::Margins || self->state.pane == ReaderDrawerPane::MarginsSides) {
+      auto& target = self->marginSliderTarget(true);
+      target = std::clamp<int>(target + event.value, CrossPointSettings::MIN_SCREEN_MARGIN,
+                               CrossPointSettings::MAX_SCREEN_MARGIN);
     }
   } else {
     self->adjustActiveSlider(event.value);
@@ -920,6 +924,7 @@ void EpubReaderDrawerActivity::buildDrawer(UiApp::ScreenType& screen) {
       buildSpacingPane(screen);
       break;
     case ReaderDrawerPane::Margins:
+    case ReaderDrawerPane::MarginsSides:
       buildMarginsPane(screen);
       break;
     case ReaderDrawerPane::Percent:
@@ -1140,27 +1145,37 @@ void EpubReaderDrawerActivity::buildSpacingPane(UiApp::ScreenType& screen) {
   drawDualReaderSliderRows(screen, line, word, !mappedInput.hasTouchHardware());
 }
 
+uint8_t& EpubReaderDrawerActivity::marginSliderTarget(const bool second) {
+  if (state.pane == ReaderDrawerPane::MarginsSides) {
+    return second ? draft.screenMarginRight : draft.screenMarginLeft;
+  }
+  return second ? draft.screenMarginBottom : draft.screenMarginTop;
+}
+
 void EpubReaderDrawerActivity::buildMarginsPane(UiApp::ScreenType& screen) {
   buildPaneHeader(screen);
+  const bool sides = state.pane == ReaderDrawerPane::MarginsSides;
+  const uint8_t firstMargin = marginSliderTarget(false);
+  const uint8_t secondMargin = marginSliderTarget(true);
   char verticalValue[16];
   char horizontalValue[16];
-  std::snprintf(verticalValue, sizeof(verticalValue), "%u", draft.screenMarginVertical);
-  std::snprintf(horizontalValue, sizeof(horizontalValue), "%u", draft.screenMarginHorizontal);
+  std::snprintf(verticalValue, sizeof(verticalValue), "%u", firstMargin);
+  std::snprintf(horizontalValue, sizeof(horizontalValue), "%u", secondMargin);
   ReaderSliderRowProps vertical;
-  vertical.label = tr(STR_TOP_BOTTOM);
+  vertical.label = sides ? tr(STR_MARGIN_LEFT) : tr(STR_MARGIN_TOP);
   vertical.value = verticalValue;
-  vertical.sliderValue = byteToPermille(draft.screenMarginVertical, CrossPointSettings::MIN_SCREEN_MARGIN,
-                                        CrossPointSettings::MAX_SCREEN_MARGIN);
+  vertical.sliderValue =
+      byteToPermille(firstMargin, CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN);
   vertical.max = 1000;
   vertical.sliderAction = ACTION_SLIDER;
   vertical.decrement = ACTION_STEP;
   vertical.increment = ACTION_STEP;
   configureReaderSliderScale(vertical, "5", "150");
   ReaderSliderRowProps horizontal;
-  horizontal.label = tr(STR_LEFT_RIGHT);
+  horizontal.label = sides ? tr(STR_MARGIN_RIGHT) : tr(STR_MARGIN_BOTTOM);
   horizontal.value = horizontalValue;
-  horizontal.sliderValue = byteToPermille(draft.screenMarginHorizontal, CrossPointSettings::MIN_SCREEN_MARGIN,
-                                          CrossPointSettings::MAX_SCREEN_MARGIN);
+  horizontal.sliderValue =
+      byteToPermille(secondMargin, CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN);
   horizontal.max = 1000;
   horizontal.sliderAction = ACTION_SLIDER + 3;
   horizontal.decrement = ACTION_STEP + 3;
@@ -1701,6 +1716,9 @@ void EpubReaderDrawerActivity::activateRow(const RowId row) {
       return;
     case RowId::Margins:
       openPane(ReaderDrawerPane::Margins);
+      return;
+    case RowId::MarginsSides:
+      openPane(ReaderDrawerPane::MarginsSides);
       return;
     case RowId::SelectChapter:
       closeAndReturn(false, EpubReaderMenuAction::SELECT_CHAPTER, !mappedInput.hasTouchHardware());
@@ -2330,10 +2348,10 @@ void EpubReaderDrawerActivity::adjustActiveSlider(const int delta) {
     draft.lineHeightPercent = CrossPointSettings::clampedLineHeightPercent(static_cast<uint8_t>(
         std::clamp<int>(draft.lineHeightPercent + delta, CrossPointSettings::MIN_LINE_HEIGHT_PERCENT,
                         CrossPointSettings::MAX_LINE_HEIGHT_PERCENT)));
-  } else if (state.pane == ReaderDrawerPane::Margins) {
-    draft.screenMarginVertical =
-        std::clamp<int>(draft.screenMarginVertical + delta, CrossPointSettings::MIN_SCREEN_MARGIN,
-                        CrossPointSettings::MAX_SCREEN_MARGIN);
+  } else if (state.pane == ReaderDrawerPane::Margins || state.pane == ReaderDrawerPane::MarginsSides) {
+    auto& target = marginSliderTarget(false);
+    target =
+        std::clamp<int>(target + delta, CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN);
   } else if (state.pane == ReaderDrawerPane::AutoPageTurn) {
     autoPageTurnIntervalSeconds = static_cast<uint16_t>(std::clamp<int>(
         autoPageTurnIntervalSeconds + delta, READER_AUTO_PAGE_TURN_MIN_SECONDS, READER_AUTO_PAGE_TURN_MAX_SECONDS));
@@ -2355,8 +2373,8 @@ void EpubReaderDrawerActivity::adjustButtonSlider(const int delta) {
       changed = value != draft.wordSpacing;
       draft.wordSpacing = value;
     }
-  } else if (state.pane == ReaderDrawerPane::Margins) {
-    uint8_t& target = buttonSliderState.focus == 0 ? draft.screenMarginVertical : draft.screenMarginHorizontal;
+  } else if (state.pane == ReaderDrawerPane::Margins || state.pane == ReaderDrawerPane::MarginsSides) {
+    uint8_t& target = marginSliderTarget(buttonSliderState.focus != 0);
     const uint8_t value = static_cast<uint8_t>(
         std::clamp<int>(target + delta, CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN));
     changed = value != target;
@@ -2481,8 +2499,10 @@ void EpubReaderDrawerActivity::renderPreviewText(const ReaderSettingsDraft& prev
                             previewSettings.sdFontFamilyName == sourceSettings.sdFontFamilyName &&
                             previewSettings.lineHeightPercent == sourceSettings.lineHeightPercent &&
                             previewSettings.wordSpacing == sourceSettings.wordSpacing &&
-                            previewSettings.screenMarginVertical == sourceSettings.screenMarginVertical &&
-                            previewSettings.screenMarginHorizontal == sourceSettings.screenMarginHorizontal &&
+                            previewSettings.screenMarginTop == sourceSettings.screenMarginTop &&
+                            previewSettings.screenMarginBottom == sourceSettings.screenMarginBottom &&
+                            previewSettings.screenMarginLeft == sourceSettings.screenMarginLeft &&
+                            previewSettings.screenMarginRight == sourceSettings.screenMarginRight &&
                             previewSettings.paragraphAlignment == sourceSettings.paragraphAlignment &&
                             previewSettings.focusReadingEnabled == sourceSettings.focusReadingEnabled &&
                             previewSettings.guideReadingEnabled == sourceSettings.guideReadingEnabled;
@@ -2499,13 +2519,13 @@ void EpubReaderDrawerActivity::renderPreviewText(const ReaderSettingsDraft& prev
   (void)orientedLeft;
   const int clockReservation = ReaderUtils::getTopStatusBarReservedHeight(renderer);
   const int previewYOffset =
-      orientedTop + std::max(static_cast<int>(previewSettings.screenMarginVertical),
+      orientedTop + std::max(static_cast<int>(previewSettings.screenMarginTop),
                              clockReservation > 0 ? clockReservation + ReaderUtils::TOP_STATUS_BAR_TEXT_PADDING : 0);
-  const int previewWidth =
-      std::max(1, renderer.getScreenWidth() - static_cast<int>(previewSettings.screenMarginHorizontal) * 2);
+  const int previewWidth = std::max(1, renderer.getScreenWidth() - static_cast<int>(previewSettings.screenMarginLeft) -
+                                           static_cast<int>(previewSettings.screenMarginRight));
   renderer.beginTextClip(safe.x, clipTop, safe.width, clipHeight);
-  previewModel->renderText(renderer, previewFontId, previewSettings.screenMarginHorizontal, previewYOffset,
-                           previewWidth, previewSettings.lineHeightPercent, previewSettings.wordSpacing,
+  previewModel->renderText(renderer, previewFontId, previewSettings.screenMarginLeft, previewYOffset, previewWidth,
+                           previewSettings.lineHeightPercent, previewSettings.wordSpacing,
                            previewSettings.paragraphAlignment, previewSettings.focusReadingEnabled,
                            previewSettings.guideReadingEnabled, ReaderUtils::readerForegroundBlack());
   renderer.endTextClip();
@@ -2521,16 +2541,17 @@ void EpubReaderDrawerActivity::renderSamplePreviewText(const ReaderSettingsDraft
   const int textHeight = std::max(0, area.height - labelHeight - metrics.previewPadding);
   // The sample is a short page: show top AND bottom margins proportionally
   // to its height, while horizontal margins and font sizes remain actual pixels.
-  const int marginY =
-      settings.screenMarginVertical * textHeight / std::max(1, static_cast<int>(renderer.getScreenHeight()));
-  const int marginX = settings.screenMarginHorizontal;
-  const int top = area.y + metrics.previewPadding + marginY;
-  const int width = std::max(1, area.width - marginX * 2);
-  renderer.beginTextClip(area.x + marginX, top, width, std::max(0, textHeight - marginY * 2));
-  previewModel->renderText(renderer, fontId, area.x + marginX, top, width, settings.lineHeightPercent,
+  const int screenHeight = std::max(1, static_cast<int>(renderer.getScreenHeight()));
+  const int marginTop = settings.screenMarginTop * textHeight / screenHeight;
+  const int marginBottom = settings.screenMarginBottom * textHeight / screenHeight;
+  const int marginLeft = settings.screenMarginLeft;
+  const int top = area.y + metrics.previewPadding + marginTop;
+  const int width = std::max(1, area.width - marginLeft - settings.screenMarginRight);
+  const int height = std::max(0, textHeight - marginTop - marginBottom);
+  renderer.beginTextClip(area.x + marginLeft, top, width, height);
+  previewModel->renderText(renderer, fontId, area.x + marginLeft, top, width, settings.lineHeightPercent,
                            settings.wordSpacing, settings.paragraphAlignment, settings.focusReadingEnabled,
-                           settings.guideReadingEnabled, ReaderUtils::readerForegroundBlack(),
-                           top + std::max(0, textHeight - marginY * 2));
+                           settings.guideReadingEnabled, ReaderUtils::readerForegroundBlack(), top + height);
   renderer.endTextClip();
 }
 
@@ -2934,7 +2955,9 @@ const char* EpubReaderDrawerActivity::paneTitle() const {
     case ReaderDrawerPane::Spacing:
       return tr(STR_SPACING);
     case ReaderDrawerPane::Margins:
-      return tr(STR_SCREEN_MARGIN);
+      return tr(STR_MARGINS_TOP_BOTTOM);
+    case ReaderDrawerPane::MarginsSides:
+      return tr(STR_MARGINS_LEFT_RIGHT);
     case ReaderDrawerPane::Percent:
       return tr(STR_GO_TO_PERCENT);
     case ReaderDrawerPane::StablePage:
@@ -2976,7 +2999,9 @@ const char* EpubReaderDrawerActivity::rowLabel(const RowId row) const {
     case RowId::GuideDots:
       return tr(STR_GUIDE_READING);
     case RowId::Margins:
-      return tr(STR_SCREEN_MARGIN);
+      return tr(STR_MARGINS_TOP_BOTTOM);
+    case RowId::MarginsSides:
+      return tr(STR_MARGINS_LEFT_RIGHT);
     case RowId::Orientation:
       return tr(STR_ORIENTATION);
     case RowId::Alignment:

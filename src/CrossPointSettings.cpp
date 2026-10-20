@@ -898,8 +898,17 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc, bool importingCrossPoint
   if (doc["screenMarginVertical"].isNull() || doc["screenMarginHorizontal"].isNull()) {
     const uint8_t legacyScreenMargin =
         std::clamp(doc["screenMargin"] | static_cast<uint8_t>(MIN_SCREEN_MARGIN), MIN_SCREEN_MARGIN, MAX_SCREEN_MARGIN);
-    if (doc["screenMarginVertical"].isNull()) screenMarginVertical = legacyScreenMargin;
-    if (doc["screenMarginHorizontal"].isNull()) screenMarginHorizontal = legacyScreenMargin;
+    if (doc["screenMarginVertical"].isNull()) screenMarginTop = legacyScreenMargin;
+    if (doc["screenMarginHorizontal"].isNull()) screenMarginLeft = legacyScreenMargin;
+    needsResave = true;
+  }
+  // Before per-edge margins, top/bottom and left/right were a single value each.
+  if (doc["screenMarginBottom"].isNull()) {
+    screenMarginBottom = screenMarginTop;
+    needsResave = true;
+  }
+  if (doc["screenMarginRight"].isNull()) {
+    screenMarginRight = screenMarginLeft;
     needsResave = true;
   }
   if (doc["language"].is<const char*>()) {
@@ -1077,8 +1086,10 @@ bool CrossPointSettings::loadFromBinaryFile() {
     if (++settingsRead >= fileSettingsCount) break;
     uint8_t legacyScreenMargin = MIN_SCREEN_MARGIN;
     serialization::readPod(inputFile, legacyScreenMargin);
-    screenMarginVertical = std::clamp(legacyScreenMargin, MIN_SCREEN_MARGIN, MAX_SCREEN_MARGIN);
-    screenMarginHorizontal = screenMarginVertical;
+    screenMarginTop = std::clamp(legacyScreenMargin, MIN_SCREEN_MARGIN, MAX_SCREEN_MARGIN);
+    screenMarginBottom = screenMarginTop;
+    screenMarginLeft = screenMarginTop;
+    screenMarginRight = screenMarginTop;
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
     if (++settingsRead >= fileSettingsCount) break;

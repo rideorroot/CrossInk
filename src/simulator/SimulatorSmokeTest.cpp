@@ -105,6 +105,10 @@ enum class SmokeStep : uint8_t {
   ReadMarksCountOff,
   ReadMarksSettingsOpen,
   ReadMarksSettings,
+  MarginsReader,
+  MarginsSettings,
+  MarginsSettingsOpen,
+  MarginsSettingsShown,
   Done,
 };
 
@@ -165,6 +169,7 @@ class SimulatorSmokeTest {
     AssertReaderMenu,
     AssertSettingsNavigation,
     AssertActivity,
+    Capture,
     Render
   };
 
@@ -382,7 +387,8 @@ class SimulatorSmokeTest {
   };
 
   static void captureReadMarksScreen(const char* name) {
-    const char* output = std::getenv("CROSSINK_SIMULATOR_SMOKE_READ_MARKS_CAPTURES");
+    const char* output = std::getenv("CROSSINK_SIMULATOR_SMOKE_CAPTURES");
+    if (!output) output = std::getenv("CROSSINK_SIMULATOR_SMOKE_READ_MARKS_CAPTURES");
     if (!output) return;
     RenderLock lock;
     std::filesystem::create_directories(output);
@@ -446,6 +452,33 @@ class SimulatorSmokeTest {
     expectFolderCounts("/Bibliothek/Leer", 0, 0);
     expectFolderCounts(READ_MARKS_ROOT, 3, 7);
     LOG_INF("SMOKE", "Read marks: index, stats and folder counts passed");
+  }
+
+  static void verifyEdgeMarginMigration() {
+    JsonDocument original;
+    SETTINGS.toJson(original);
+    JsonDocument legacy;
+    legacy["screenMarginVertical"] = 20;
+    legacy["screenMarginHorizontal"] = 30;
+    SETTINGS.fromJson(legacy.as<JsonVariantConst>());
+    if (SETTINGS.screenMarginTop != 20 || SETTINGS.screenMarginBottom != 20 || SETTINGS.screenMarginLeft != 30 ||
+        SETTINGS.screenMarginRight != 30) {
+      fail("Legacy axis margins did not migrate to all four edges");
+    }
+    SETTINGS.screenMarginBottom = 41;
+    SETTINGS.screenMarginRight = 42;
+    JsonDocument saved;
+    SETTINGS.toJson(saved);
+    SETTINGS.screenMarginBottom = 5;
+    SETTINGS.screenMarginRight = 5;
+    SETTINGS.fromJson(saved.as<JsonVariantConst>());
+    if (SETTINGS.screenMarginTop != 20 || SETTINGS.screenMarginBottom != 41 || SETTINGS.screenMarginLeft != 30 ||
+        SETTINGS.screenMarginRight != 42) {
+      fail("Edge margins did not survive a settings round trip");
+    }
+    if (buildReaderScreenMarginSettingsList(getSettingsList()).size() != 4) fail("Margin settings list is not 4 rows");
+    SETTINGS.fromJson(original.as<JsonVariantConst>());
+    LOG_INF("SMOKE", "Margins: legacy migration and persistence passed");
   }
 
   static void verifyReaderControlsSettings() {
@@ -1318,6 +1351,18 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_MARGINS")) {
+          verifyEdgeMarginMigration();
+          const char* bookPath = std::getenv("CROSSINK_SIMULATOR_SMOKE_BOOK");
+          if (!bookPath || !Storage.exists(bookPath)) fail("Margins scenario needs CROSSINK_SIMULATOR_SMOKE_BOOK");
+          SETTINGS.screenMarginTop = 60;
+          SETTINGS.screenMarginBottom = 10;
+          SETTINGS.screenMarginLeft = 70;
+          SETTINGS.screenMarginRight = 15;
+          activityManager.goToReader(bookPath, true);
+          queueStep("Margins: asymmetric reader", SmokeStep::MarginsReader, 12);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_READ_MARKS")) {
           startReadMarksScenario();
           activityManager.goToFileBrowser(READ_MARKS_ROOT);
@@ -2206,6 +2251,75 @@ class SimulatorSmokeTest {
         LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
         std::_Exit(0);
 
+      case SmokeStep::MarginsReader: {
+        inputScript.clear();
+        scriptIndex = 0;
+        inputCompletionStep = SmokeStep::MarginsSettings;
+        const auto menuDown = mappedInputManager.menuButton(MappedInputManager::Button::Down);
+        const auto menuLeft = mappedInputManager.menuButton(MappedInputManager::Button::Left);
+        inputScript.push_back(capture("m1-reader-asymmetrisch"));
+        addTap(MappedInputManager::Button::Confirm);
+        inputScript.push_back(render("Margins: reader menu", 4));
+        addTap(menuLeft);
+        inputScript.push_back(render("Margins: layout tab", 3));
+        inputScript.push_back(assertReaderMenu(ReaderDrawerTab::Layout, ReaderDrawerPane::Root, 0));
+        addTap(menuDown);
+        addTap(MappedInputManager::Button::Confirm);
+        inputScript.push_back(render("Margins: top/bottom pane", 4));
+        inputScript.push_back(assertReaderMenu(ReaderDrawerTab::Layout, ReaderDrawerPane::Margins, 0));
+        inputScript.push_back(capture("m2-menue-oben-unten"));
+        addTap(MappedInputManager::Button::Back);
+        inputScript.push_back(render("Margins: back to layout tab", 3));
+        // Leaving a pane drops row focus; the first Down refocuses row 0.
+        addTap(menuDown);
+        addTap(menuDown);
+        inputScript.push_back(render("Margins: side row focused", 3));
+        inputScript.push_back(assertReaderMenu(ReaderDrawerTab::Layout, ReaderDrawerPane::Root, 1));
+        addTap(MappedInputManager::Button::Confirm);
+        inputScript.push_back(render("Margins: left/right pane", 4));
+        inputScript.push_back(assertReaderMenu(ReaderDrawerTab::Layout, ReaderDrawerPane::MarginsSides, 0));
+        // Edit the second (right) slider only.
+        addTap(menuDown);
+        addTap(MappedInputManager::Button::Confirm);
+        for (int i = 0; i < 5; ++i) addTap(MappedInputManager::Button::Down);
+        addTap(MappedInputManager::Button::Back);
+        inputScript.push_back(render("Margins: right margin adjusted", 4));
+        inputScript.push_back(capture("m3-menue-links-rechts"));
+        addTap(MappedInputManager::Button::Back);
+        addTap(MappedInputManager::Button::Back);
+        inputScript.push_back(render("Margins: reader after drawer", 12));
+        inputScript.push_back(assertActivity("EpubReader"));
+        inputScript.push_back(capture("m4-reader-nach-aenderung"));
+        step = SmokeStep::ReaderInput;
+        break;
+      }
+
+      case SmokeStep::MarginsSettings:
+        if (SETTINGS.screenMarginTop != 60 || SETTINGS.screenMarginBottom != 10 || SETTINGS.screenMarginLeft != 70 ||
+            SETTINGS.screenMarginRight == 15) {
+          fail("Drawer edited the wrong margin: top=%u bottom=%u left=%u right=%u", SETTINGS.screenMarginTop,
+               SETTINGS.screenMarginBottom, SETTINGS.screenMarginLeft, SETTINGS.screenMarginRight);
+        }
+        LOG_INF("SMOKE", "Margins: drawer edited right margin only (right=%u)", SETTINGS.screenMarginRight);
+        activityManager.replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInputManager));
+        queueStep("Margins: settings root", SmokeStep::MarginsSettingsOpen, 4);
+        break;
+
+      case SmokeStep::MarginsSettingsOpen: {
+        {
+          RenderLock lock;
+          auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
+          settings->simulatorOpenSubmenu(1, SettingAction::ScreenMargin, StrId::STR_MARGIN_TOP);
+        }
+        queueStep("Margins: settings submenu", SmokeStep::MarginsSettingsShown, 4);
+        break;
+      }
+
+      case SmokeStep::MarginsSettingsShown:
+        captureReadMarksScreen("m5-einstellungen");
+        LOG_INF("SMOKE", "Simulator smoke test passed: edge margins");
+        std::_Exit(0);
+
       case SmokeStep::Done:
         if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL && carouselCachePass == 0 &&
             std::getenv("CROSSINK_SIMULATOR_SMOKE_BOOK")) {
@@ -2297,6 +2411,10 @@ class SimulatorSmokeTest {
 
   static ScriptAction render(const char* label, int framesToSettle = 3) {
     return {ScriptActionType::Render, MappedInputManager::Button::Back, label, framesToSettle, 0, 0};
+  }
+
+  static ScriptAction capture(const char* name) {
+    return {ScriptActionType::Capture, MappedInputManager::Button::Back, name, 0, 0, 0};
   }
 
   static ScriptAction assertActivity(const char* name) {
@@ -3007,6 +3125,9 @@ class SimulatorSmokeTest {
       }
       case ScriptActionType::AssertActivity:
         if (!activityManager.isCurrentActivityNamed(action.label)) fail("Expected current activity: %s", action.label);
+        break;
+      case ScriptActionType::Capture:
+        captureReadMarksScreen(action.label);
         break;
       case ScriptActionType::Render:
         queueStep(action.label, SmokeStep::ReaderInput, action.settleFrames);

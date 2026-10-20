@@ -817,9 +817,11 @@ inline std::vector<SettingInfo> buildReaderPageLayoutSettingsList(const std::vec
 
 inline std::vector<SettingInfo> buildReaderScreenMarginSettingsList(const std::vector<SettingInfo>& allSettings) {
   std::vector<SettingInfo> settings;
-  settings.reserve(2);
-  addSettingByName(settings, allSettings, StrId::STR_TOP_BOTTOM);
-  addSettingByName(settings, allSettings, StrId::STR_LEFT_RIGHT);
+  settings.reserve(4);
+  addSettingByName(settings, allSettings, StrId::STR_MARGIN_TOP);
+  addSettingByName(settings, allSettings, StrId::STR_MARGIN_BOTTOM);
+  addSettingByName(settings, allSettings, StrId::STR_MARGIN_LEFT);
+  addSettingByName(settings, allSettings, StrId::STR_MARGIN_RIGHT);
   return settings;
 }
 

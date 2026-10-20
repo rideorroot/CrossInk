@@ -565,9 +565,8 @@ void DictionaryDefinitionActivity::wrapText() {
     rightPadding = renderer.getScreenWidth() - (modalX_ + modalWidth_ - innerPadding);
     bodyStartY = modalY_ + innerPadding + renderer.getLineHeight(getDefinitionFontId()) + metrics.optionPopupTitleGap;
   } else {
-    const int sidePadding = metrics.contentSidePadding + SETTINGS.screenMarginHorizontal;
-    leftPadding = contentX + sidePadding;
-    rightPadding = (isLandscapeCcw ? hintGutterWidth : 0) + sidePadding;
+    leftPadding = contentX + metrics.contentSidePadding + SETTINGS.screenMarginLeft;
+    rightPadding = (isLandscapeCcw ? hintGutterWidth : 0) + metrics.contentSidePadding + SETTINGS.screenMarginRight;
     bodyStartY = hintGutterHeight + metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   }
 

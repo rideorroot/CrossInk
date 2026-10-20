@@ -62,6 +62,8 @@ enum class ReaderDrawerPane : uint8_t {
   DictionaryFont,
   EnumOptions,
   TtfRendering,
+  // Appended: pane values follow declaration order.
+  MarginsSides,
 };
 
 enum class ReaderButtonSliderInput : uint8_t { Next, Previous, Confirm, Back };
@@ -150,6 +152,8 @@ enum class ReaderDrawerCatalogItem : uint8_t {
   SyncProgress,
   NearbyPositionSync,
   SendNearbyBook,
+  // Appended so existing item values stay stable.
+  MarginsSides,
 };
 
 struct ReaderDrawerAvailability {
@@ -185,6 +189,7 @@ constexpr ReaderDrawerCatalog makeReaderDrawerCatalog(const ReaderDrawerAvailabi
 
   auto& layout = catalog[static_cast<size_t>(ReaderDrawerTab::Layout)];
   layout.add(ReaderDrawerCatalogItem::Margins);
+  layout.add(ReaderDrawerCatalogItem::MarginsSides);
   layout.add(ReaderDrawerCatalogItem::Orientation);
   layout.add(ReaderDrawerCatalogItem::Alignment);
   layout.add(ReaderDrawerCatalogItem::Images);
@@ -240,7 +245,7 @@ constexpr ReaderDrawerCatalog makeReaderDrawerCatalog(const ReaderDrawerAvailabi
 
 constexpr bool readerDrawerStepChangesSettings(const ReaderDrawerPane pane) {
   return pane == ReaderDrawerPane::Spacing || pane == ReaderDrawerPane::Margins ||
-         pane == ReaderDrawerPane::AutoPageTurn;
+         pane == ReaderDrawerPane::MarginsSides || pane == ReaderDrawerPane::AutoPageTurn;
 }
 
 // Only settings with an existing live text preview reserve sample space.
@@ -248,13 +253,14 @@ constexpr bool readerDrawerShowsSamplePreview(const ReaderDrawerPane pane, const
                                               const ReaderDrawerCatalogItem option) {
   return (pane == ReaderDrawerPane::Root && tab == ReaderDrawerTab::Font) || pane == ReaderDrawerPane::ReaderFont ||
          pane == ReaderDrawerPane::FontFamily || pane == ReaderDrawerPane::Spacing ||
-         pane == ReaderDrawerPane::Margins ||
+         pane == ReaderDrawerPane::Margins || pane == ReaderDrawerPane::MarginsSides ||
          (pane == ReaderDrawerPane::EnumOptions &&
           (option == ReaderDrawerCatalogItem::FontSize || option == ReaderDrawerCatalogItem::Alignment));
 }
 
 constexpr bool readerDrawerSliderPreviewsText(const ReaderDrawerPane pane) {
-  return pane == ReaderDrawerPane::Spacing || pane == ReaderDrawerPane::Margins;
+  return pane == ReaderDrawerPane::Spacing || pane == ReaderDrawerPane::Margins ||
+         pane == ReaderDrawerPane::MarginsSides;
 }
 
 constexpr bool shouldRenderReaderDrawerAntiAliasing(const bool previewRendered, const bool textAntiAliasing,
@@ -323,8 +329,10 @@ struct ReaderSettingsDraft {
   std::array<char, 64> sdFontFamilyName{};
   uint8_t lineHeightPercent = 0;
   uint8_t wordSpacing = 0;
-  uint8_t screenMarginVertical = 0;
-  uint8_t screenMarginHorizontal = 0;
+  uint8_t screenMarginTop = 0;
+  uint8_t screenMarginBottom = 0;
+  uint8_t screenMarginLeft = 0;
+  uint8_t screenMarginRight = 0;
   uint8_t orientation = 0;
   uint8_t paragraphAlignment = 0;
   uint8_t textAntiAliasing = 0;

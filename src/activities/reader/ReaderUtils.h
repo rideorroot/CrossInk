@@ -90,10 +90,10 @@ inline int getReaderFooterReservedHeight(const bool automaticPageTurnActive) {
     const int autoTurnBarHeight =
         readerStatusBarTotalHeight(ReaderStatusBarPosition::Bottom, true, UITheme::getProgressBarHeight(),
                                    UITheme::getInstance().getMetrics().statusBarVerticalMargin);
-    return std::max(static_cast<int>(SETTINGS.screenMarginVertical),
+    return std::max(static_cast<int>(SETTINGS.screenMarginBottom),
                     std::max(statusBarHeight, autoTurnBarHeight) + STATUS_BAR_TEXT_PADDING);
   }
-  return std::max(static_cast<int>(SETTINGS.screenMarginVertical),
+  return std::max(static_cast<int>(SETTINGS.screenMarginBottom),
                   static_cast<int>(statusBarHeight + STATUS_BAR_TEXT_PADDING));
 }
 

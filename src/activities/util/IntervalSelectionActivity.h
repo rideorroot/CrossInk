@@ -24,7 +24,15 @@ class GfxRenderer;
 class IntervalSelectionActivity final : public Activity {
  public:
   using ValueFormatter = void (*)(int value, char* buf, size_t len);
-  enum class ReaderPreviewSetting : uint8_t { None, LineSpacing, WordSpacing, VerticalMargin, HorizontalMargin };
+  enum class ReaderPreviewSetting : uint8_t {
+    None,
+    LineSpacing,
+    WordSpacing,
+    MarginTop,
+    MarginBottom,
+    MarginLeft,
+    MarginRight
+  };
 
   explicit IntervalSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const char* activityName,
                                      StrId titleId, int initialValue, int minValue, int maxValue, int smallStep,

@@ -580,9 +580,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t refreshFrequency = REFRESH_15;
   uint8_t hyphenationEnabled = 0;
 
-  // Reader screen margins. Legacy single-axis settings initialize both values.
-  uint8_t screenMarginVertical = 5;
-  uint8_t screenMarginHorizontal = 5;
+  // Reader screen margins, one per edge of the reading orientation. Top and
+  // left keep the historical "screenMarginVertical"/"screenMarginHorizontal"
+  // JSON keys; bottom and right start as copies of them.
+  uint8_t screenMarginTop = 5;
+  uint8_t screenMarginBottom = 5;
+  uint8_t screenMarginLeft = 5;
+  uint8_t screenMarginRight = 5;
   // Show EPUB publisher pagebreak labels in the reader margin when present.
   uint8_t publisherPageNumbers = 0;
   // OPDS browser settings

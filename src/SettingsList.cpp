@@ -91,14 +91,24 @@ const std::vector<SettingInfo>& getBaseSettingsList() {
             .withEnumRawValues({CrossPointSettings::PORTRAIT, CrossPointSettings::LANDSCAPE_CW,
                                 CrossPointSettings::LANDSCAPE_CCW, CrossPointSettings::INVERTED}));
     add(SettingInfo::Submenu(StrId::STR_SCREEN_MARGIN, SettingAction::ScreenMargin));
-    add(SettingInfo::Value(StrId::STR_TOP_BOTTOM, &CrossPointSettings::screenMarginVertical,
+    // Top/left keep their original keys so existing settings files and
+    // CrossInk/CrossPoint imports still map onto them.
+    add(SettingInfo::Value(StrId::STR_MARGIN_TOP, &CrossPointSettings::screenMarginTop,
                            {CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN,
                             CrossPointSettings::SCREEN_MARGIN_SMALL_STEP},
                            "screenMarginVertical", StrId::STR_CAT_READER));
-    add(SettingInfo::Value(StrId::STR_LEFT_RIGHT, &CrossPointSettings::screenMarginHorizontal,
+    add(SettingInfo::Value(StrId::STR_MARGIN_BOTTOM, &CrossPointSettings::screenMarginBottom,
+                           {CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN,
+                            CrossPointSettings::SCREEN_MARGIN_SMALL_STEP},
+                           "screenMarginBottom", StrId::STR_CAT_READER));
+    add(SettingInfo::Value(StrId::STR_MARGIN_LEFT, &CrossPointSettings::screenMarginLeft,
                            {CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN,
                             CrossPointSettings::SCREEN_MARGIN_SMALL_STEP},
                            "screenMarginHorizontal", StrId::STR_CAT_READER));
+    add(SettingInfo::Value(StrId::STR_MARGIN_RIGHT, &CrossPointSettings::screenMarginRight,
+                           {CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN,
+                            CrossPointSettings::SCREEN_MARGIN_SMALL_STEP},
+                           "screenMarginRight", StrId::STR_CAT_READER));
     add(SettingInfo::Toggle(StrId::STR_PUBLISHER_PAGE_NUMBERS, &CrossPointSettings::publisherPageNumbers,
                             "publisherPageNumbers", StrId::STR_CAT_READER));
     add(SettingInfo::Enum(

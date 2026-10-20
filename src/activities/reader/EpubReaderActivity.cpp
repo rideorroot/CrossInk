@@ -97,7 +97,8 @@ constexpr uint8_t PRE_DICTIONARY_FONT_SIZE_READER_SETTINGS_FILE_VERSION = 6;
 constexpr uint8_t PRE_SPLIT_SCREEN_MARGIN_READER_SETTINGS_FILE_VERSION = 7;
 constexpr uint8_t PRE_GLOBAL_DARK_MODE_READER_SETTINGS_FILE_VERSION = 8;
 constexpr uint8_t PRE_FIELD_OVERRIDES_READER_SETTINGS_FILE_VERSION = 9;
-constexpr uint8_t READER_SETTINGS_FILE_VERSION = 10;
+constexpr uint8_t PRE_EDGE_MARGINS_READER_SETTINGS_FILE_VERSION = 10;
+constexpr uint8_t READER_SETTINGS_FILE_VERSION = 11;
 constexpr uint8_t READER_SETTINGS_FLAG_CUSTOM = 1 << 0;
 constexpr uint8_t READER_SETTINGS_FLAG_AUTO_PAGE_TURN = 1 << 1;
 constexpr uint8_t READER_SETTINGS_FLAG_RENDER_MODE = 1 << 2;
@@ -949,8 +950,8 @@ void drawPublisherPageMarkers(const GfxRenderer& renderer, const Page& page, con
 
 uint8_t effectiveReaderLeftMargin() {
   return SETTINGS.publisherPageNumbers
-             ? std::max<uint8_t>(SETTINGS.screenMarginHorizontal, PUBLISHER_PAGE_NUMBER_LEFT_MARGIN_MIN)
-             : SETTINGS.screenMarginHorizontal;
+             ? std::max<uint8_t>(SETTINGS.screenMarginLeft, PUBLISHER_PAGE_NUMBER_LEFT_MARGIN_MIN)
+             : SETTINGS.screenMarginLeft;
 }
 
 struct ReaderViewportLayout {
@@ -967,21 +968,21 @@ ReaderViewportLayout computeReaderViewportLayout(GfxRenderer& renderer, const bo
   ReaderViewportLayout layout{};
   renderer.getOrientedViewableTRBL(&layout.marginTop, &layout.marginRight, &layout.marginBottom, &layout.marginLeft);
   layout.marginLeft += effectiveReaderLeftMargin();
-  layout.marginRight += SETTINGS.screenMarginHorizontal;
+  layout.marginRight += SETTINGS.screenMarginRight;
 
   const int topStatusBarReservedHeight = ReaderUtils::getTopStatusBarReservedHeight(renderer);
   if (topStatusBarReservedHeight > 0) {
-    layout.marginTop += std::max(static_cast<int>(SETTINGS.screenMarginVertical),
+    layout.marginTop += std::max(static_cast<int>(SETTINGS.screenMarginTop),
                                  topStatusBarReservedHeight + ReaderUtils::TOP_STATUS_BAR_TEXT_PADDING);
   } else {
-    layout.marginTop += SETTINGS.screenMarginVertical;
+    layout.marginTop += SETTINGS.screenMarginTop;
   }
 
 #if CROSSINK_APP_CAP_TOUCH
   if (showFootnoteHeader) {
     const Rect header = TouchHeaderBackButton::compactHeaderRect(renderer);
     layout.marginTop =
-        std::max(layout.marginTop, header.y + header.height + static_cast<int>(SETTINGS.screenMarginVertical));
+        std::max(layout.marginTop, header.y + header.height + static_cast<int>(SETTINGS.screenMarginTop));
   }
 #else
   (void)showFootnoteHeader;
@@ -1112,8 +1113,10 @@ void captureReaderSettings(EpubReaderActivity::ReaderSettingsSnapshot& out) {
   out.lineHeightPercent = SETTINGS.lineHeightPercent;
   out.wordSpacing = SETTINGS.wordSpacing;
   out.orientation = SETTINGS.orientation;
-  out.screenMarginVertical = SETTINGS.screenMarginVertical;
-  out.screenMarginHorizontal = SETTINGS.screenMarginHorizontal;
+  out.screenMarginTop = SETTINGS.screenMarginTop;
+  out.screenMarginBottom = SETTINGS.screenMarginBottom;
+  out.screenMarginLeft = SETTINGS.screenMarginLeft;
+  out.screenMarginRight = SETTINGS.screenMarginRight;
   out.publisherPageNumbers = SETTINGS.publisherPageNumbers;
   out.paragraphAlignment = SETTINGS.paragraphAlignment;
   out.embeddedStyle = SETTINGS.embeddedStyle;
@@ -1147,10 +1150,14 @@ void applyReaderSettings(const EpubReaderActivity::ReaderSettingsSnapshot& in) {
   SETTINGS.lineHeightPercent = CrossPointSettings::clampedLineHeightPercent(in.lineHeightPercent);
   SETTINGS.wordSpacing = std::min<uint8_t>(in.wordSpacing, CrossPointSettings::MAX_WORD_SPACING);
   SETTINGS.orientation = in.orientation < CrossPointSettings::ORIENTATION_COUNT ? in.orientation : SETTINGS.orientation;
-  SETTINGS.screenMarginVertical = std::clamp<uint8_t>(in.screenMarginVertical, CrossPointSettings::MIN_SCREEN_MARGIN,
-                                                      CrossPointSettings::MAX_SCREEN_MARGIN);
-  SETTINGS.screenMarginHorizontal = std::clamp<uint8_t>(
-      in.screenMarginHorizontal, CrossPointSettings::MIN_SCREEN_MARGIN, CrossPointSettings::MAX_SCREEN_MARGIN);
+  SETTINGS.screenMarginTop = std::clamp<uint8_t>(in.screenMarginTop, CrossPointSettings::MIN_SCREEN_MARGIN,
+                                                 CrossPointSettings::MAX_SCREEN_MARGIN);
+  SETTINGS.screenMarginLeft = std::clamp<uint8_t>(in.screenMarginLeft, CrossPointSettings::MIN_SCREEN_MARGIN,
+                                                  CrossPointSettings::MAX_SCREEN_MARGIN);
+  SETTINGS.screenMarginBottom = std::clamp<uint8_t>(in.screenMarginBottom, CrossPointSettings::MIN_SCREEN_MARGIN,
+                                                    CrossPointSettings::MAX_SCREEN_MARGIN);
+  SETTINGS.screenMarginRight = std::clamp<uint8_t>(in.screenMarginRight, CrossPointSettings::MIN_SCREEN_MARGIN,
+                                                   CrossPointSettings::MAX_SCREEN_MARGIN);
   SETTINGS.publisherPageNumbers = in.publisherPageNumbers ? 1 : 0;
   SETTINGS.paragraphAlignment = in.paragraphAlignment < CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT
                                     ? in.paragraphAlignment
@@ -1177,8 +1184,8 @@ constexpr std::array<uint8_t ReaderSettingsSnapshot::*, 18> READER_SETTING_FIELD
     &ReaderSettingsSnapshot::lineHeightPercent,
     &ReaderSettingsSnapshot::wordSpacing,
     &ReaderSettingsSnapshot::orientation,
-    &ReaderSettingsSnapshot::screenMarginVertical,
-    &ReaderSettingsSnapshot::screenMarginHorizontal,
+    &ReaderSettingsSnapshot::screenMarginTop,
+    &ReaderSettingsSnapshot::screenMarginLeft,
     &ReaderSettingsSnapshot::publisherPageNumbers,
     &ReaderSettingsSnapshot::paragraphAlignment,
     &ReaderSettingsSnapshot::embeddedStyle,
@@ -1191,8 +1198,18 @@ constexpr std::array<uint8_t ReaderSettingsSnapshot::*, 18> READER_SETTING_FIELD
     &ReaderSettingsSnapshot::guideReadingEnabled,
     &ReaderSettingsSnapshot::indexingMethod,
 };
+// Override bits are persisted per book: 0-17 follow READER_SETTING_FIELDS, 18 is
+// the SD font family, and per-edge margins were appended after it.
 constexpr uint32_t SD_FONT_FAMILY_OVERRIDE = 1U << READER_SETTING_FIELDS.size();
-constexpr uint32_t ALL_READER_SETTING_OVERRIDES = (SD_FONT_FAMILY_OVERRIDE << 1) - 1;
+constexpr std::array<uint8_t ReaderSettingsSnapshot::*, 2> EDGE_MARGIN_FIELDS = {
+    &ReaderSettingsSnapshot::screenMarginBottom,
+    &ReaderSettingsSnapshot::screenMarginRight,
+};
+constexpr size_t EDGE_MARGIN_FIRST_BIT = READER_SETTING_FIELDS.size() + 1;
+constexpr uint32_t ALL_READER_SETTING_OVERRIDES = (1U << (EDGE_MARGIN_FIRST_BIT + EDGE_MARGIN_FIELDS.size())) - 1;
+static_assert(READER_SETTING_FIELDS.size() == 18, "persisted override bits must not move");
+// Bit of the legacy top/left field each edge margin used to share.
+constexpr std::array<uint32_t, 2> EDGE_MARGIN_LEGACY_BITS = {1U << 5, 1U << 6};
 constexpr uint32_t READER_FONT_OVERRIDES = (1U << 0) | (1U << 1) | SD_FONT_FAMILY_OVERRIDE;
 // Anti-aliasing changes the page drawing, but not its saved line/page layout.
 constexpr uint32_t READER_LAYOUT_SETTING_OVERRIDES = ALL_READER_SETTING_OVERRIDES & ~(1U << 11);
@@ -1205,6 +1222,10 @@ uint32_t changedReaderSettingsMask(const ReaderSettingsSnapshot& current, const 
     if (current.*field != global.*field) mask |= 1U << i;
   }
   if (std::strcmp(current.sdFontFamilyName, global.sdFontFamilyName) != 0) mask |= SD_FONT_FAMILY_OVERRIDE;
+  for (size_t i = 0; i < EDGE_MARGIN_FIELDS.size(); ++i) {
+    const auto field = EDGE_MARGIN_FIELDS[i];
+    if (current.*field != global.*field) mask |= 1U << (EDGE_MARGIN_FIRST_BIT + i);
+  }
   return mask;
 }
 
@@ -1218,6 +1239,12 @@ void applyReaderSettingsOverrides(ReaderSettingsSnapshot& target, const ReaderSe
   }
   if (mask & SD_FONT_FAMILY_OVERRIDE) {
     std::memcpy(target.sdFontFamilyName, book.sdFontFamilyName, sizeof(target.sdFontFamilyName));
+  }
+  for (size_t i = 0; i < EDGE_MARGIN_FIELDS.size(); ++i) {
+    if (mask & (1U << (EDGE_MARGIN_FIRST_BIT + i))) {
+      const auto field = EDGE_MARGIN_FIELDS[i];
+      target.*field = book.*field;
+    }
   }
 }
 
@@ -1233,11 +1260,11 @@ bool readReaderSettingsSnapshot(FsFile& file, EpubReaderActivity::ReaderSettings
 
   uint8_t legacyScreenMargin = CrossPointSettings::MIN_SCREEN_MARGIN;
   const bool marginsRead = includesSplitScreenMargins
-                               ? readU8(file, out.screenMarginVertical) && readU8(file, out.screenMarginHorizontal)
+                               ? readU8(file, out.screenMarginTop) && readU8(file, out.screenMarginLeft)
                                : readU8(file, legacyScreenMargin);
   if (!includesSplitScreenMargins) {
-    out.screenMarginVertical = legacyScreenMargin;
-    out.screenMarginHorizontal = legacyScreenMargin;
+    out.screenMarginTop = legacyScreenMargin;
+    out.screenMarginLeft = legacyScreenMargin;
   }
   // Versions 2-8 wrote a per-book Dark Mode byte. Consume it to preserve
   // their remaining reader settings, but never let one book change the
@@ -1264,13 +1291,13 @@ bool readReaderSettingsSnapshot(FsFile& file, EpubReaderActivity::ReaderSettings
 bool writeReaderSettingsSnapshot(FsFile& file, const EpubReaderActivity::ReaderSettingsSnapshot& in) {
   return writeU8(file, in.fontFamily) && writeU8(file, in.readerFontPointSize) && writeU8(file, in.lineHeightPercent) &&
          writeU8(file, std::min<uint8_t>(in.wordSpacing, CrossPointSettings::MAX_WORD_SPACING)) &&
-         writeU8(file, in.orientation) && writeU8(file, in.screenMarginVertical) &&
-         writeU8(file, in.screenMarginHorizontal) && writeU8(file, in.publisherPageNumbers) &&
-         writeU8(file, in.paragraphAlignment) && writeU8(file, in.embeddedStyle) &&
-         writeU8(file, in.hyphenationEnabled) && writeU8(file, in.textAntiAliasing) &&
-         writeU8(file, in.imageRendering) && writeU8(file, in.extraParagraphSpacing) &&
-         writeU8(file, in.forceParagraphIndents) && writeU8(file, in.focusReadingEnabled) &&
-         writeU8(file, in.guideReadingEnabled) && writeU8(file, normalizeRenderModeRaw(in.epubRenderMode)) &&
+         writeU8(file, in.orientation) && writeU8(file, in.screenMarginTop) && writeU8(file, in.screenMarginLeft) &&
+         writeU8(file, in.publisherPageNumbers) && writeU8(file, in.paragraphAlignment) &&
+         writeU8(file, in.embeddedStyle) && writeU8(file, in.hyphenationEnabled) &&
+         writeU8(file, in.textAntiAliasing) && writeU8(file, in.imageRendering) &&
+         writeU8(file, in.extraParagraphSpacing) && writeU8(file, in.forceParagraphIndents) &&
+         writeU8(file, in.focusReadingEnabled) && writeU8(file, in.guideReadingEnabled) &&
+         writeU8(file, normalizeRenderModeRaw(in.epubRenderMode)) &&
          writeU8(file, in.indexingMethod < CrossPointSettings::INDEXING_METHOD_COUNT
                            ? in.indexingMethod
                            : CrossPointSettings::INDEXING_FULL_SECTION) &&
@@ -1314,7 +1341,8 @@ BookReaderSettingsData loadBookReaderSettingsFile(const std::string& cachePath) 
       version != PRE_DICTIONARY_FONT_SIZE_READER_SETTINGS_FILE_VERSION &&
       version != PRE_SPLIT_SCREEN_MARGIN_READER_SETTINGS_FILE_VERSION &&
       version != PRE_GLOBAL_DARK_MODE_READER_SETTINGS_FILE_VERSION &&
-      version != PRE_FIELD_OVERRIDES_READER_SETTINGS_FILE_VERSION && version != READER_SETTINGS_FILE_VERSION) {
+      version != PRE_FIELD_OVERRIDES_READER_SETTINGS_FILE_VERSION &&
+      version != PRE_EDGE_MARGINS_READER_SETTINGS_FILE_VERSION && version != READER_SETTINGS_FILE_VERSION) {
     file.close();
     LOG_DBG("ERS", "Reader settings version mismatch, using defaults");
     return data;
@@ -1344,8 +1372,18 @@ BookReaderSettingsData loadBookReaderSettingsFile(const std::string& cachePath) 
     ok = readU8(file, data.dictionaryFontPointSize);
   }
   uint32_t overrideMask = 0;
-  if (ok && version >= READER_SETTINGS_FILE_VERSION) {
+  if (ok && version >= PRE_EDGE_MARGINS_READER_SETTINGS_FILE_VERSION) {
     ok = readU32(file, overrideMask) && (overrideMask & ~ALL_READER_SETTING_OVERRIDES) == 0;
+  }
+  if (ok && version >= READER_SETTINGS_FILE_VERSION) {
+    ok = readU8(file, snapshot.screenMarginBottom) && readU8(file, snapshot.screenMarginRight);
+  } else if (ok) {
+    // Older books stored one value per axis: bottom follows top, right follows left.
+    snapshot.screenMarginBottom = snapshot.screenMarginTop;
+    snapshot.screenMarginRight = snapshot.screenMarginLeft;
+    for (size_t i = 0; i < EDGE_MARGIN_LEGACY_BITS.size(); ++i) {
+      if (overrideMask & EDGE_MARGIN_LEGACY_BITS[i]) overrideMask |= 1U << (EDGE_MARGIN_FIRST_BIT + i);
+    }
   }
   file.close();
   if (!ok) {
@@ -1361,7 +1399,7 @@ BookReaderSettingsData loadBookReaderSettingsFile(const std::string& cachePath) 
     // Older records owned the entire snapshot. New records only own the fields
     // the reader actually changed, so unrelated global defaults still apply.
     data.readerSettingsOverrideMask =
-        version < READER_SETTINGS_FILE_VERSION ? ALL_READER_SETTING_OVERRIDES : overrideMask;
+        version < PRE_EDGE_MARGINS_READER_SETTINGS_FILE_VERSION ? ALL_READER_SETTING_OVERRIDES : overrideMask;
     data.hasCustomReaderSettings = data.readerSettingsOverrideMask != 0;
     applyReaderSettingsOverrides(data.readerSettings, snapshot, data.readerSettingsOverrideMask);
   }
@@ -1406,7 +1444,9 @@ bool saveBookReaderSettingsFile(const std::string& cachePath, const BookReaderSe
                   writeReaderSettingsSnapshot(file, normalizedReaderSettings) &&
                   writeExact(file, data.dictionarySdFontFamilyName, sizeof(data.dictionarySdFontFamilyName)) &&
                   writeU8(file, data.dictionaryFontPointSize) &&
-                  writeU32(file, data.readerSettingsOverrideMask & ALL_READER_SETTING_OVERRIDES);
+                  writeU32(file, data.readerSettingsOverrideMask & ALL_READER_SETTING_OVERRIDES) &&
+                  writeU8(file, normalizedReaderSettings.screenMarginBottom) &&
+                  writeU8(file, normalizedReaderSettings.screenMarginRight);
   file.close();
   if (!ok) {
     LOG_ERR("ERS", "Short write saving reader settings");

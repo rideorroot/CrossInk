@@ -319,14 +319,14 @@ individual global changes. **Delete Book Cache** does not reset these choices.
   Line/Word Spacing > Word Spacing**. Changing it reflows the current
   book, so page positions may change; it is not available for TXT books.
 
-- **Reader Screen Margin**: Controls the screen margins in Reading Mode between 5 and 40 pixels in 5-pixel increments.
+- **Reader Screen Margin**: Sets the **Top**, **Bottom**, **Left** and **Right** margins in Reading Mode separately, from 5 to 150 pixels. The edges follow the current reading orientation. In the reader menu, **Layout > Margins Top/Bottom** and **Margins Left/Right** change them for the open book.
 
 - **Reader Paragraph Alignment**: Set the alignment of paragraphs; options are "Justified" (default), "Left", "Center", "Right", or "Book's Style".
 
 - **Publisher Page Numbers**: Show page numbers supplied by the EPUB when the
   book includes them.
 
-  Note: This reserves 5px of left margin to your screen to provide space for the page numbers. This is only noticeable if your `Left/Right` margins are set to `5`. If the page has no publisher page number, your margins may appear uneven.
+  Note: This reserves 5px of left margin to your screen to provide space for the page numbers. This is only noticeable if your `Left` margin is set to `5`. If the page has no publisher page number, your margins may appear uneven.
 
 - **Hyphenation**: Whether to hyphenate text in Reading Mode; options are "ON" or "OFF". Korean text wraps at spaces when "OFF"; when "ON", a Korean word may also split at a line end without drawing a hyphen.
 

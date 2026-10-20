@@ -158,7 +158,8 @@ void IntervalSelectionActivity::formatEndpoint(const int endpoint, char* const b
 
 bool IntervalSelectionActivity::usesTextTouchStepControls() const {
   return titleId == StrId::STR_TIME_TO_SLEEP || titleId == StrId::STR_AUTO_TURN_INTERVAL_SECONDS ||
-         titleId == StrId::STR_LINE_SPACING || titleId == StrId::STR_TOP_BOTTOM || titleId == StrId::STR_LEFT_RIGHT;
+         titleId == StrId::STR_LINE_SPACING || titleId == StrId::STR_MARGIN_TOP ||
+         titleId == StrId::STR_MARGIN_BOTTOM || titleId == StrId::STR_MARGIN_LEFT || titleId == StrId::STR_MARGIN_RIGHT;
 }
 
 #if CROSSINK_APP_CAP_TOUCH
@@ -380,15 +381,19 @@ void IntervalSelectionActivity::renderReaderPreview(const Rect& area) {
                                  : SETTINGS.lineHeightPercent;
   const uint8_t wordSpacing =
       readerPreviewSetting == ReaderPreviewSetting::WordSpacing ? static_cast<uint8_t>(value) : SETTINGS.wordSpacing;
-  const int marginX =
-      readerPreviewSetting == ReaderPreviewSetting::HorizontalMargin ? value : SETTINGS.screenMarginHorizontal;
-  const int marginVertical =
-      readerPreviewSetting == ReaderPreviewSetting::VerticalMargin ? value : SETTINGS.screenMarginVertical;
-  const int marginY = marginVertical * textHeight / std::max(1, static_cast<int>(renderer.getScreenHeight()));
-  const int left = area.x + metrics.previewPadding + marginX;
-  const int top = area.y + metrics.previewPadding + marginY;
-  const int width = std::max(1, area.width - metrics.previewPadding * 2 - marginX * 2);
-  const int height = std::max(0, textHeight - marginY * 2);
+  const auto pick = [this](const ReaderPreviewSetting setting, const uint8_t current) {
+    return readerPreviewSetting == setting ? value : static_cast<int>(current);
+  };
+  const int marginLeft = pick(ReaderPreviewSetting::MarginLeft, SETTINGS.screenMarginLeft);
+  const int marginRight = pick(ReaderPreviewSetting::MarginRight, SETTINGS.screenMarginRight);
+  const int screenHeight = std::max(1, static_cast<int>(renderer.getScreenHeight()));
+  const int marginTop = pick(ReaderPreviewSetting::MarginTop, SETTINGS.screenMarginTop) * textHeight / screenHeight;
+  const int marginBottom =
+      pick(ReaderPreviewSetting::MarginBottom, SETTINGS.screenMarginBottom) * textHeight / screenHeight;
+  const int left = area.x + metrics.previewPadding + marginLeft;
+  const int top = area.y + metrics.previewPadding + marginTop;
+  const int width = std::max(1, area.width - metrics.previewPadding * 2 - marginLeft - marginRight);
+  const int height = std::max(0, textHeight - marginTop - marginBottom);
   renderer.beginTextClip(left, top, width, height);
   previewModel->renderText(renderer, fontId, left, top, width, lineHeight, wordSpacing, SETTINGS.paragraphAlignment,
                            SETTINGS.focusReadingEnabled, SETTINGS.guideReadingEnabled, true, top + height);

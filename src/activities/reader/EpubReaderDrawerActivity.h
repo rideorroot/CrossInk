@@ -214,6 +214,8 @@ class EpubReaderDrawerActivity final : public Activity {
   void buildSimplePane(UiApp::ScreenType& screen);
   void buildSpacingPane(UiApp::ScreenType& screen);
   void buildMarginsPane(UiApp::ScreenType& screen);
+  // Margins pane edits top/bottom, MarginsSides edits left/right.
+  uint8_t& marginSliderTarget(bool second);
   void buildPercentPane(UiApp::ScreenType& screen);
   void buildPercentSlider(UiApp::ScreenType& screen);
   void buildStablePagePane(UiApp::ScreenType& screen);

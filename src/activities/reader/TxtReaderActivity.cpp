@@ -25,6 +25,12 @@
 #include "fontIds.h"
 
 namespace {
+// The page-index cache stores two int32 margin fields. Each now carries two
+// edges (low byte: top/left, next byte: bottom/right). Caches written before
+// per-edge margins hold a plain value and simply rebuild once.
+int32_t packTxtCacheMargins(const uint8_t first, const uint8_t second) {
+  return static_cast<int32_t>(first) | (static_cast<int32_t>(second) << 8);
+}
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 constexpr unsigned long LONG_PRESS_MENU_MS = 600;
 // Cache file magic and version
@@ -657,8 +663,10 @@ void TxtReaderActivity::initializeReader() {
 
   // Store current settings for cache validation
   cachedFontId = SETTINGS.getReaderFontId();
-  cachedVerticalMargin = SETTINGS.screenMarginVertical;
-  cachedHorizontalMargin = SETTINGS.screenMarginHorizontal;
+  cachedMarginTop = SETTINGS.screenMarginTop;
+  cachedMarginBottom = SETTINGS.screenMarginBottom;
+  cachedMarginLeft = SETTINGS.screenMarginLeft;
+  cachedMarginRight = SETTINGS.screenMarginRight;
   cachedParagraphAlignment = SETTINGS.paragraphAlignment;
   cachedTopStatusBarHeight = ReaderUtils::getTopStatusBarReservedHeight(renderer);
   cachedBottomStatusBarHeight = UITheme::getInstance().getStatusBarHeight();
@@ -666,17 +674,17 @@ void TxtReaderActivity::initializeReader() {
   // Calculate viewport dimensions
   renderer.getOrientedViewableTRBL(&cachedOrientedMarginTop, &cachedOrientedMarginRight, &cachedOrientedMarginBottom,
                                    &cachedOrientedMarginLeft);
-  cachedOrientedMarginLeft += cachedHorizontalMargin;
-  cachedOrientedMarginRight += cachedHorizontalMargin;
+  cachedOrientedMarginLeft += cachedMarginLeft;
+  cachedOrientedMarginRight += cachedMarginRight;
   const int topStatusBarReservedHeight = cachedTopStatusBarHeight;
   if (topStatusBarReservedHeight > 0) {
-    cachedOrientedMarginTop += std::max(static_cast<int>(cachedVerticalMargin),
+    cachedOrientedMarginTop += std::max(static_cast<int>(cachedMarginTop),
                                         topStatusBarReservedHeight + ReaderUtils::TOP_STATUS_BAR_TEXT_PADDING);
   } else {
-    cachedOrientedMarginTop += cachedVerticalMargin;
+    cachedOrientedMarginTop += cachedMarginTop;
   }
   cachedOrientedMarginBottom += std::max(
-      cachedVerticalMargin, static_cast<uint8_t>(cachedBottomStatusBarHeight + ReaderUtils::STATUS_BAR_TEXT_PADDING));
+      cachedMarginBottom, static_cast<uint8_t>(cachedBottomStatusBarHeight + ReaderUtils::STATUS_BAR_TEXT_PADDING));
 
   viewportWidth = renderer.getScreenWidth() - cachedOrientedMarginLeft - cachedOrientedMarginRight;
   const int viewportHeight = renderer.getScreenHeight() - cachedOrientedMarginTop - cachedOrientedMarginBottom;
@@ -1061,7 +1069,8 @@ bool TxtReaderActivity::loadPageIndexCache() {
   int32_t horizontalMargin;
   serialization::readPod(f, verticalMargin);
   serialization::readPod(f, horizontalMargin);
-  if (verticalMargin != cachedVerticalMargin || horizontalMargin != cachedHorizontalMargin) {
+  if (verticalMargin != packTxtCacheMargins(cachedMarginTop, cachedMarginBottom) ||
+      horizontalMargin != packTxtCacheMargins(cachedMarginLeft, cachedMarginRight)) {
     LOG_DBG("TRS", "Cache screen margins mismatch, rebuilding");
     return false;
   }
@@ -1110,8 +1119,8 @@ void TxtReaderActivity::savePageIndexCache() const {
   serialization::writePod(f, static_cast<int32_t>(viewportWidth));
   serialization::writePod(f, static_cast<int32_t>(linesPerPage));
   serialization::writePod(f, static_cast<int32_t>(cachedFontId));
-  serialization::writePod(f, static_cast<int32_t>(cachedVerticalMargin));
-  serialization::writePod(f, static_cast<int32_t>(cachedHorizontalMargin));
+  serialization::writePod(f, packTxtCacheMargins(cachedMarginTop, cachedMarginBottom));
+  serialization::writePod(f, packTxtCacheMargins(cachedMarginLeft, cachedMarginRight));
   serialization::writePod(f, cachedParagraphAlignment);
   serialization::writePod(f, static_cast<uint32_t>(pageOffsets.size()));
 
@@ -1148,23 +1157,24 @@ bool TxtReaderActivity::drawCurrentPageToBuffer(const std::string& filePath, Gfx
 
   // Compute layout values that match what initializeReader() produces
   const int fontId = SETTINGS.getReaderFontId();
-  const uint8_t verticalMargin = SETTINGS.screenMarginVertical;
-  const uint8_t horizontalMargin = SETTINGS.screenMarginHorizontal;
+  const int32_t verticalMargin = packTxtCacheMargins(SETTINGS.screenMarginTop, SETTINGS.screenMarginBottom);
+  const int32_t horizontalMargin = packTxtCacheMargins(SETTINGS.screenMarginLeft, SETTINGS.screenMarginRight);
   const uint8_t paragraphAlignment = SETTINGS.paragraphAlignment;
 
   int marginTop, marginRight, marginBottom, marginLeft;
   renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
-  marginLeft += horizontalMargin;
-  marginRight += horizontalMargin;
+  marginLeft += SETTINGS.screenMarginLeft;
+  marginRight += SETTINGS.screenMarginRight;
   const int topStatusBarReservedHeight = ReaderUtils::getTopStatusBarReservedHeight(renderer);
   if (topStatusBarReservedHeight > 0) {
-    marginTop += std::max(static_cast<int>(verticalMargin),
+    marginTop += std::max(static_cast<int>(SETTINGS.screenMarginTop),
                           topStatusBarReservedHeight + ReaderUtils::TOP_STATUS_BAR_TEXT_PADDING);
   } else {
-    marginTop += verticalMargin;
+    marginTop += SETTINGS.screenMarginTop;
   }
-  marginBottom += std::max(verticalMargin, static_cast<uint8_t>(UITheme::getInstance().getStatusBarHeight() +
-                                                                ReaderUtils::STATUS_BAR_TEXT_PADDING));
+  marginBottom += std::max(
+      SETTINGS.screenMarginBottom,
+      static_cast<uint8_t>(UITheme::getInstance().getStatusBarHeight() + ReaderUtils::STATUS_BAR_TEXT_PADDING));
 
   const int vw = renderer.getScreenWidth() - marginLeft - marginRight;
   const int vh = renderer.getScreenHeight() - marginTop - marginBottom;

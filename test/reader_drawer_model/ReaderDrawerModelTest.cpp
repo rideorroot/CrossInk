@@ -41,12 +41,12 @@ TEST(ReaderDrawerModel, FailedPreviewRestoresFontWithoutDiscardingOtherEdits) {
   draft.sdFontFamilyName[0] = 'X';
   draft.orientation = 3;
   draft.hyphenationEnabled = 1;
-  draft.screenMarginHorizontal = 45;
+  draft.screenMarginLeft = 45;
   ReaderSettingsDraft lastGood;
   lastGood.fontFamily = 1;
   lastGood.readerFontPointSize = 18;
   lastGood.orientation = 0;
-  lastGood.screenMarginHorizontal = 15;
+  lastGood.screenMarginLeft = 15;
 
   restoreReaderDraftFont(draft, lastGood);
   EXPECT_EQ(draft.fontFamily, 1);
@@ -54,7 +54,7 @@ TEST(ReaderDrawerModel, FailedPreviewRestoresFontWithoutDiscardingOtherEdits) {
   EXPECT_EQ(draft.sdFontFamilyName[0], '\0');
   EXPECT_EQ(draft.orientation, 3);
   EXPECT_EQ(draft.hyphenationEnabled, 1);
-  EXPECT_EQ(draft.screenMarginHorizontal, 45);
+  EXPECT_EQ(draft.screenMarginLeft, 45);
 }
 
 TEST(ReaderDrawerModel, TapSlidersSnapArbitraryValuesToTheNearestFive) {
@@ -109,9 +109,10 @@ TEST(ReaderDrawerModel, CatalogOrderAndConditionalRowsMatchTouchDesign) {
   EXPECT_EQ(font.items[5], ReaderDrawerCatalogItem::GuideDots);
 
   const auto& layout = minimal[static_cast<size_t>(ReaderDrawerTab::Layout)];
-  EXPECT_EQ(layout.count, 9);
+  EXPECT_EQ(layout.count, 10);
   EXPECT_EQ(layout.items[0], ReaderDrawerCatalogItem::Margins);
-  EXPECT_EQ(layout.items[3], ReaderDrawerCatalogItem::Images);
+  EXPECT_EQ(layout.items[1], ReaderDrawerCatalogItem::MarginsSides);
+  EXPECT_EQ(layout.items[4], ReaderDrawerCatalogItem::Images);
 
   const auto& minimalMore = minimal[static_cast<size_t>(ReaderDrawerTab::More)];
   EXPECT_EQ(minimalMore.count, 3);
@@ -243,10 +244,12 @@ TEST(FrontlightPanelModel, TouchDrawerSupportsFrontlightOrReaderDetails) {
 TEST(ReaderDrawerModel, PercentStepsDoNotBecomeSettingsChanges) {
   EXPECT_TRUE(readerDrawerStepChangesSettings(ReaderDrawerPane::Spacing));
   EXPECT_TRUE(readerDrawerStepChangesSettings(ReaderDrawerPane::Margins));
+  EXPECT_TRUE(readerDrawerStepChangesSettings(ReaderDrawerPane::MarginsSides));
   EXPECT_TRUE(readerDrawerStepChangesSettings(ReaderDrawerPane::AutoPageTurn));
   EXPECT_FALSE(readerDrawerStepChangesSettings(ReaderDrawerPane::Percent));
   EXPECT_TRUE(readerDrawerSliderPreviewsText(ReaderDrawerPane::Spacing));
   EXPECT_TRUE(readerDrawerSliderPreviewsText(ReaderDrawerPane::Margins));
+  EXPECT_TRUE(readerDrawerSliderPreviewsText(ReaderDrawerPane::MarginsSides));
   EXPECT_FALSE(readerDrawerSliderPreviewsText(ReaderDrawerPane::AutoPageTurn));
   EXPECT_FALSE(readerDrawerSliderPreviewsText(ReaderDrawerPane::Percent));
   EXPECT_FALSE(readerDrawerSliderPreviewsText(ReaderDrawerPane::StablePage));

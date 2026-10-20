@@ -42,8 +42,10 @@ class TxtReaderActivity final : public Activity {
 
   // Cached settings for cache validation (different fonts/margins require re-indexing)
   int cachedFontId = 0;
-  uint8_t cachedVerticalMargin = 0;
-  uint8_t cachedHorizontalMargin = 0;
+  uint8_t cachedMarginTop = 0;
+  uint8_t cachedMarginBottom = 0;
+  uint8_t cachedMarginLeft = 0;
+  uint8_t cachedMarginRight = 0;
   uint8_t cachedParagraphAlignment = CrossPointSettings::LEFT_ALIGN;
   int cachedTopStatusBarHeight = 0;
   int cachedBottomStatusBarHeight = 0;

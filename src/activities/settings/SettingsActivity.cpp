@@ -622,9 +622,13 @@ void SettingsActivity::openScreenMarginPicker(const SettingInfo& setting) {
           /*allowPowerAsConfirm=*/false, /*ignoreInitialConfirmRelease=*/false, /*showPercentValue=*/false,
           StrId::STR_NONE_OPT, /*overrideDisabledReaderTouchscreen=*/false, /*showTouchHeaderBackButton=*/true,
           /*valueFormatter=*/nullptr, /*tapStep=*/5, /*useReaderSlider=*/true,
-          selectedSetting.valuePtr == &CrossPointSettings::screenMarginVertical
-              ? IntervalSelectionActivity::ReaderPreviewSetting::VerticalMargin
-              : IntervalSelectionActivity::ReaderPreviewSetting::HorizontalMargin),
+          selectedSetting.valuePtr == &CrossPointSettings::screenMarginTop
+              ? IntervalSelectionActivity::ReaderPreviewSetting::MarginTop
+          : selectedSetting.valuePtr == &CrossPointSettings::screenMarginBottom
+              ? IntervalSelectionActivity::ReaderPreviewSetting::MarginBottom
+          : selectedSetting.valuePtr == &CrossPointSettings::screenMarginLeft
+              ? IntervalSelectionActivity::ReaderPreviewSetting::MarginLeft
+              : IntervalSelectionActivity::ReaderPreviewSetting::MarginRight),
       [this, selectedSetting](const ActivityResult& result) {
         if (!result.isCancelled) {
           SETTINGS.*(selectedSetting.valuePtr) = static_cast<uint8_t>(std::clamp(
@@ -1055,8 +1059,10 @@ void SettingsActivity::toggleCurrentSetting() {
     openWordSpacingPicker();
     return;
   }
-  if (setting.valuePtr == &CrossPointSettings::screenMarginVertical ||
-      setting.valuePtr == &CrossPointSettings::screenMarginHorizontal) {
+  if (setting.valuePtr == &CrossPointSettings::screenMarginTop ||
+      setting.valuePtr == &CrossPointSettings::screenMarginBottom ||
+      setting.valuePtr == &CrossPointSettings::screenMarginLeft ||
+      setting.valuePtr == &CrossPointSettings::screenMarginRight) {
     openScreenMarginPicker(setting);
     return;
   }
@@ -1637,10 +1643,11 @@ void SettingsActivity::render(RenderLock&&) {
                       (*currentSettings)[selectedSettingIndex - 1].valuePtr == &CrossPointSettings::lineHeightPercent ||
                       (*currentSettings)[selectedSettingIndex - 1].valuePtr ==
                           &CrossPointSettings::readingIdleTimeThresholdUnits ||
+                      (*currentSettings)[selectedSettingIndex - 1].valuePtr == &CrossPointSettings::screenMarginTop ||
+                      (*currentSettings)[selectedSettingIndex - 1].valuePtr == &CrossPointSettings::screenMarginLeft ||
                       (*currentSettings)[selectedSettingIndex - 1].valuePtr ==
-                          &CrossPointSettings::screenMarginVertical ||
-                      (*currentSettings)[selectedSettingIndex - 1].valuePtr ==
-                          &CrossPointSettings::screenMarginHorizontal ||
+                          &CrossPointSettings::screenMarginBottom ||
+                      (*currentSettings)[selectedSettingIndex - 1].valuePtr == &CrossPointSettings::screenMarginRight ||
                       (*currentSettings)[selectedSettingIndex - 1].value16Ptr ==
                           &CrossPointSettings::frontlightScheduleStart ||
                       (*currentSettings)[selectedSettingIndex - 1].value16Ptr ==
