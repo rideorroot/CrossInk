@@ -53,6 +53,7 @@ enum class SettingAction {
   DownloadFonts,
   TtfRendering,
   ClockSync,
+  StorageInfo,
 };
 
 struct SettingInfo {
@@ -329,6 +330,13 @@ class SettingsActivity final : public Activity {
 #ifdef SIMULATOR
   int simulatorCategoryIndex() const { return selectedCategoryIndex; }
   int simulatorSelectedIndex() const { return selectedSettingIndex; }
+  void simulatorOpenCategory(const int categoryIndex, const StrId focus) {
+    enterCategory(categoryIndex);
+    for (int i = 0; i < settingsCount; ++i) {
+      if ((*currentSettings)[i].nameId == focus) selectedSettingIndex = i + 1;
+    }
+    requestUpdate();
+  }
   void simulatorOpenSubmenu(const int categoryIndex, const SettingAction action, const StrId focus) {
     enterCategory(categoryIndex);
     openSubmenu(action);

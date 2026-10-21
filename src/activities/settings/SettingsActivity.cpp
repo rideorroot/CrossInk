@@ -23,6 +23,7 @@
 #include "CrossPointSettings.h"
 #include "DeviceCapabilities.h"
 #include "FontSelectionActivity.h"
+#include "StorageActivity.h"
 #if CROSSINK_SCALABLE_FONTS
 #include "TtfRenderOptionsActivity.h"
 #endif
@@ -1187,6 +1188,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::ClearCache:
         startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::StorageInfo:
+        startActivityForResult(std::make_unique<StorageActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::CheckForUpdates:
         silentRestartToNetwork(NetworkBootTarget::OTA);

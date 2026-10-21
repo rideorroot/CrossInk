@@ -50,6 +50,7 @@
 #include "activities/settings/QuickActionsActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/settings/StatusBarSettingsActivity.h"
+#include "activities/settings/StorageActivity.h"
 #include "activities/util/FrontlightPanelActivity.h"
 #include "components/HeaderDate.h"
 #include "components/TouchHeaderBackButton.h"
@@ -109,6 +110,9 @@ enum class SmokeStep : uint8_t {
   MarginsSettings,
   MarginsSettingsOpen,
   MarginsSettingsShown,
+  StorageScan,
+  StorageSystemMenu,
+  StorageSystemMenuShown,
   Done,
 };
 
@@ -198,6 +202,7 @@ class SimulatorSmokeTest {
   unsigned frontlightLayoutPass = 0;
   unsigned homeThemePass = 0;
   uint32_t readMarksCompletedBefore = 0;
+  int storageWaitFrames = 0;
   uint64_t homeThemeScreenHash = 0;
   std::string homeThemeBookPath;
 
@@ -1351,6 +1356,21 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_STORAGE")) {
+          for (const char* dir : {"/Bibliothek", "/Bibliothek/Krimi", "/.versteckt"}) {
+            if (!Storage.exists(dir) && !Storage.mkdir(dir)) fail("Cannot create %s", dir);
+          }
+          const std::string chunk(250000, 'x');
+          for (const char* book : {"/Bibliothek/Eins.epub", "/Bibliothek/Krimi/Zwei.epub", "/Bibliothek/Krimi/Drei.txt",
+                                   "/.versteckt/Kein Buch.epub"}) {
+            if (!Storage.writeFile(book, chunk.c_str())) fail("Cannot create %s", book);
+          }
+          if (!Storage.writeFile("/Bibliothek/cover.bmp", chunk.c_str())) fail("Cannot create image fixture");
+          activityManager.replaceActivity(std::make_unique<StorageActivity>(renderer, mappedInputManager));
+          storageWaitFrames = 0;
+          queueStep("Storage: scanning", SmokeStep::StorageScan, 2);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_MARGINS")) {
           verifyEdgeMarginMigration();
           const char* bookPath = std::getenv("CROSSINK_SIMULATOR_SMOKE_BOOK");
@@ -2250,6 +2270,49 @@ class SimulatorSmokeTest {
         captureReadMarksScreen("5-einstellungen");
         LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
         std::_Exit(0);
+
+      case SmokeStep::StorageScan: {
+        bool done = false;
+        uint32_t books = 0;
+        uint64_t bytes = 0;
+        {
+          RenderLock lock;
+          const auto* storage = static_cast<StorageActivity*>(activityManager.simulatorCurrentActivity());
+          done = storage->simulatorScanDone();
+          books = storage->simulatorBookCount();
+          bytes = storage->simulatorBookBytes();
+        }
+        if (!done) {
+          if (++storageWaitFrames > 400) fail("Storage scan did not finish");
+          break;
+        }
+        // Hidden folders and images are System, not Books.
+        if (books != 3 || bytes != 750000ULL) {
+          fail("Storage counted %u books / %llu bytes, expected 3 / 750000", books,
+               static_cast<unsigned long long>(bytes));
+        }
+        LOG_INF("SMOKE", "Storage: %u books, %llu bytes", books, static_cast<unsigned long long>(bytes));
+        queueStep("Storage: result", SmokeStep::StorageSystemMenu, 3);
+        break;
+      }
+
+      case SmokeStep::StorageSystemMenu:
+        captureReadMarksScreen("s1-speicher");
+        activityManager.replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInputManager));
+        queueStep("Storage: settings root", SmokeStep::StorageSystemMenuShown, 4);
+        break;
+
+      case SmokeStep::StorageSystemMenuShown: {
+        {
+          RenderLock lock;
+          auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
+          settings->simulatorOpenCategory(3, StrId::STR_STORAGE);
+        }
+        activityManager.requestUpdateAndWait();
+        captureReadMarksScreen("s2-system-menue");
+        LOG_INF("SMOKE", "Simulator smoke test passed: storage");
+        std::_Exit(0);
+      }
 
       case SmokeStep::MarginsReader: {
         inputScript.clear();

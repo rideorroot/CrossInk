@@ -3,6 +3,7 @@
 ### Added
 
 - File Browser shows books marked as finished with a book-with-check-mark icon, so a complete, categorised library can stay in place instead of moving read books to a separate folder.
+- Settings > System > Storage shows how the SD card is used, split into System, Books and Free, as a bar with a legend and the number of books.
 - Set reader screen margins separately for the top, bottom, left and right edge, both in Settings > Reader > Screen Margins and in the reader menu (Layout > Margins Top/Bottom and Margins Left/Right). Existing margins carry over unchanged.
 - File Browser folders show how many of their books (including sub-folders) are finished, e.g. "4/12". Toggle it under System > Files & Cache > Show Read Count on Folders.
 

@@ -443,6 +443,8 @@ which status-bar items are shown.
 - **Files & Cache**: Configure hidden files, file extensions, file-browser view,
   folder read counts, finished-book behavior, and clear the reading cache.
 
+- **Storage**: Shows how much of the SD card is used, split into **System** (CrossInk data, cache, fonts and other files), **Books** (EPUB, XTC, TXT and Markdown files outside hidden folders) and **Free**.
+
 - **Reading Stats**: Turn device-wide stats tracking on or off, configure
   idle-time filtering, and access all-time stats backup/reset actions. Turning
   tracking off pauses new per-book and all-time stats but keeps the history
