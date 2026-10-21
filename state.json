@@ -1,0 +1,13 @@
+{
+  "crosspoint": {
+    "last_notified_release": "1.6.5",
+    "notified_on": "2026-10-21",
+    "awaiting_crossink": false
+  },
+  "crossink": {
+    "built_release": "v1.6.1",
+    "built_on": "2026-10-21"
+  },
+  "custom_branch": "crossink-custom",
+  "last_check": "2026-10-21"
+}
