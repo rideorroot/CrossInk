@@ -59,6 +59,7 @@
 #include "components/themes/dashboard/DashboardTheme.h"
 #include "components/themes/minimal/MinimalTheme.h"
 #include "simulator/SimulatorHomeKeyInput.h"
+#include "util/AuthorSort.h"
 #include "util/ButtonShortcutController.h"
 #include "util/FolderReadCounts.h"
 
@@ -113,6 +114,7 @@ enum class SmokeStep : uint8_t {
   MarginsSettings,
   MarginsSettingsOpen,
   MarginsSettingsShown,
+  SortShown,
   StorageScan,
   StorageSystemMenu,
   StorageSystemMenuShown,
@@ -1395,6 +1397,49 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_SORT")) {
+          const std::vector<std::string> names = {
+              "Die Sturmfelsakademie 2 (Das Tor der Toten) - Torsten Weitze.epub",
+              "Der Name der Rose - Umberto Eco.epub",
+              "Die Sturmfelsakademie 1 (Der Turm der Bettler) - Torsten Weitze.epub",
+              "Es - Stephen King.epub",
+              "Relic - Douglas Preston & Lincoln Child.epub",
+              "Notizen.txt",
+              "Der Hobbit - J. R. R. Tolkien.epub",
+              "Serien/",
+          };
+          std::vector<std::string> sorted = names;
+          AuthorSort::sortFileList(sorted);
+          const std::vector<std::string> expected = {
+              "Serien/",
+              "Der Name der Rose - Umberto Eco.epub",
+              "Es - Stephen King.epub",
+              "Relic - Douglas Preston & Lincoln Child.epub",
+              "Der Hobbit - J. R. R. Tolkien.epub",
+              "Die Sturmfelsakademie 1 (Der Turm der Bettler) - Torsten Weitze.epub",
+              "Die Sturmfelsakademie 2 (Das Tor der Toten) - Torsten Weitze.epub",
+              "Notizen.txt",
+          };
+          if (sorted != expected) {
+            for (const auto& n : sorted) LOG_ERR("SMOKE", "sorted: %s", n.c_str());
+            fail("Author sort order mismatch");
+          }
+          if (!Storage.exists("/Sortiert") && !Storage.mkdir("/Sortiert")) fail("Cannot create sort fixture dir");
+          for (const auto& n : names) {
+            const std::string path = "/Sortiert/" + n;
+            if (n.back() == '/') {
+              const std::string dir = path.substr(0, path.size() - 1);
+              if (!Storage.exists(dir.c_str()) && !Storage.mkdir(dir.c_str())) fail("Cannot create %s", dir.c_str());
+            } else if (!Storage.writeFile(path.c_str(), "x")) {
+              fail("Cannot create %s", path.c_str());
+            }
+          }
+          SETTINGS.fileBrowserSort = CrossPointSettings::FILE_BROWSER_SORT_AUTHOR;
+          SETTINGS.hideFileExtension = 1;
+          activityManager.goToFileBrowser("/Sortiert");
+          queueStep("Sort: author order", SmokeStep::SortShown, 4);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_STREAK")) {
           verifyStreakCheck();
           LOG_INF("SMOKE", "Simulator smoke test passed: streak check");
@@ -2313,6 +2358,11 @@ class SimulatorSmokeTest {
       case SmokeStep::ReadMarksSettings:
         captureReadMarksScreen("5-einstellungen");
         LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
+        std::_Exit(0);
+
+      case SmokeStep::SortShown:
+        captureReadMarksScreen("o1-sortiert-nach-autor");
+        LOG_INF("SMOKE", "Simulator smoke test passed: author sort");
         std::_Exit(0);
 
       case SmokeStep::StorageScan: {

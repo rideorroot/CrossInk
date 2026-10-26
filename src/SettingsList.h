@@ -1075,10 +1075,11 @@ inline std::vector<SettingInfo> buildSystemDeviceSettingsList(const std::vector<
 
 inline std::vector<SettingInfo> buildSystemFilesCacheSettingsList(const std::vector<SettingInfo>& allSettings) {
   std::vector<SettingInfo> settings;
-  settings.reserve(7);
+  settings.reserve(8);
   addSettingByName(settings, allSettings, StrId::STR_SHOW_HIDDEN_FILES);
   addSettingByName(settings, allSettings, StrId::STR_HIDE_FILE_EXTENSION);
   addSettingByName(settings, allSettings, StrId::STR_FILE_BROWSER_DISPLAY);
+  addSettingByName(settings, allSettings, StrId::STR_FILE_BROWSER_SORT);
   addSettingByName(settings, allSettings, StrId::STR_FOLDER_READ_COUNT);
   addSettingByName(settings, allSettings, StrId::STR_REMOVE_READ_FROM_RECENTS);
   addSettingByName(settings, allSettings, StrId::STR_MOVE_FINISHED_TO_READ);
@@ -1088,10 +1089,11 @@ inline std::vector<SettingInfo> buildSystemFilesCacheSettingsList(const std::vec
 
 inline std::vector<SettingInfo> buildFileBrowserSettingsList(const std::vector<SettingInfo>& allSettings) {
   std::vector<SettingInfo> settings;
-  settings.reserve(4);
+  settings.reserve(5);
   addSettingByName(settings, allSettings, StrId::STR_SHOW_HIDDEN_FILES);
   addSettingByName(settings, allSettings, StrId::STR_HIDE_FILE_EXTENSION);
   addSettingByName(settings, allSettings, StrId::STR_FILE_BROWSER_DISPLAY);
+  addSettingByName(settings, allSettings, StrId::STR_FILE_BROWSER_SORT);
   addSettingByName(settings, allSettings, StrId::STR_FOLDER_READ_COUNT);
   return settings;
 }

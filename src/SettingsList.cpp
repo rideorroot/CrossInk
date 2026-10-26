@@ -254,6 +254,9 @@ const std::vector<SettingInfo>& getBaseSettingsList() {
                             StrId::STR_CAT_SYSTEM));
     add(SettingInfo::Toggle(StrId::STR_HIDE_FILE_EXTENSION, &CrossPointSettings::hideFileExtension, "hideFileExtension",
                             StrId::STR_CAT_SYSTEM));
+    add(SettingInfo::Enum(StrId::STR_FILE_BROWSER_SORT, &CrossPointSettings::fileBrowserSort,
+                          {StrId::STR_FILE_BROWSER_SORT_NAME, StrId::STR_FILE_BROWSER_SORT_AUTHOR}, "fileBrowserSort",
+                          StrId::STR_CAT_SYSTEM));
     add(SettingInfo::Toggle(StrId::STR_FOLDER_READ_COUNT, &CrossPointSettings::fileBrowserFolderReadCount,
                             "fileBrowserFolderReadCount", StrId::STR_CAT_SYSTEM));
     add(SettingInfo::Enum(StrId::STR_FILE_BROWSER_DISPLAY, &CrossPointSettings::fileBrowserDisplay,

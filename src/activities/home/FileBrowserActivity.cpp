@@ -40,6 +40,7 @@
 #include "components/icons/readStatusIcons.h"
 #include "components/themes/minimal/MinimalTheme.h"
 #include "fontIds.h"
+#include "util/AuthorSort.h"
 #include "util/BookMoveUtils.h"
 #include "util/FolderReadCounts.h"
 
@@ -299,7 +300,7 @@ void FileBrowserActivity::loadFilesLocked() {
   }
 
   if (!overflow || fileListMemoryLimited) {
-    FsHelpers::sortFileList(files);
+    sortLoadedFiles();
     precomputeFolderReadCounts();
     return;
   }
@@ -332,8 +333,18 @@ void FileBrowserActivity::loadFilesLocked() {
           static_cast<unsigned>(INDEX_THRESHOLD));
   overflow = false;
   loadFilesIntoVector(INDEX_THRESHOLD, overflow);
-  FsHelpers::sortFileList(files);
+  sortLoadedFiles();
   precomputeFolderReadCounts();
+}
+
+void FileBrowserActivity::sortLoadedFiles() {
+  // Book ordering applies to the normal Books view; pickers keep name order.
+  // Folders above the in-memory limit use the on-card name index instead.
+  if (mode == Mode::Books && SETTINGS.fileBrowserSort == CrossPointSettings::FILE_BROWSER_SORT_AUTHOR) {
+    AuthorSort::sortFileList(files);
+  } else {
+    FsHelpers::sortFileList(files);
+  }
 }
 
 void FileBrowserActivity::onSlowFolderCountWalk(void* user) {

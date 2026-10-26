@@ -239,6 +239,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     FILE_BROWSER_DISPLAY_2_LINES = 1,
     FILE_BROWSER_DISPLAY_COUNT
   };
+  enum FILE_BROWSER_SORT {
+    FILE_BROWSER_SORT_NAME = 0,
+    // "<Title> - <Author>" names ordered by the author's last name.
+    FILE_BROWSER_SORT_AUTHOR = 1,
+    FILE_BROWSER_SORT_COUNT
+  };
 
   // Short power button press actions
   enum SHORT_PWRBTN {
@@ -650,6 +656,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t fileBrowserFolderReadCount = 1;
   // File browser display row style (0 = one-line theme list, 1 = two-line compact display)
   uint8_t fileBrowserDisplay = FILE_BROWSER_DISPLAY_1_LINE;
+  // File browser ordering (FILE_BROWSER_SORT).
+  uint8_t fileBrowserSort = FILE_BROWSER_SORT_NAME;
   // Remove a book from the Recent Books list when its End-of-Book screen is reached (0 = off, 1 = on)
   uint8_t removeReadBooksFromRecents = 0;
   // Move epub to /Read/ folder on SD card when marked as finished (0 = disabled, 1 = enabled)

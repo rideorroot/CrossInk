@@ -113,6 +113,7 @@ class FileBrowserActivity final : public Activity {
   void toggleHiddenFiles();
   // Fills the folder read-count cache for directory rows (Books mode only).
   void precomputeFolderReadCounts();
+  void sortLoadedFiles();
   static void onSlowFolderCountWalk(void* user);
   size_t findEntry(const std::string& name);
 

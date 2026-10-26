@@ -3,6 +3,7 @@
 ### Added
 
 - File Browser shows books marked as finished with a book-with-check-mark icon, so a complete, categorised library can stay in place instead of moving read books to a separate folder.
+- Sort File Browser folders by author (last name) for books named "<Title> - <Author>": Settings > System > Files & Cache > Sort Files By. Books by the same author are ordered by title; folders stay on top.
 - The reading streak on the Minimal stats and Dashboard sleep screens (and the Dashboard home screen) shows a check mark once today's reading has extended the streak.
 - Settings > System > Storage shows how the SD card is used, split into System, Books and Free, as a bar with a legend and the number of books.
 - Set reader screen margins separately for the top, bottom, left and right edge, both in Settings > Reader > Screen Margins and in the reader menu (Layout > Margins Top/Bottom and Margins Left/Right). Existing margins carry over unchanged.
