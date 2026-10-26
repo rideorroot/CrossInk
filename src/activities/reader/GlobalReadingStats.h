@@ -50,5 +50,7 @@ struct GlobalReadingStats {
 
   void recordReadingSpan(const ReadingStatsDateTime& localStart, uint32_t seconds);
   uint16_t currentReadingStreak(const ReadingStatsDate* today) const;
+  // True when `day` is already recorded as a reading day.
+  bool readOnDay(const ReadingStatsDate& day) const;
   uint16_t displayLongestReadingStreak() const;
 };

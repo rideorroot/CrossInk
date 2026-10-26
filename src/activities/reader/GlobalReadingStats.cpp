@@ -400,6 +400,10 @@ uint16_t GlobalReadingStats::currentReadingStreak(const ReadingStatsDate* today)
   return computeReadingHistoryCurrentStreak(readingHistoryAnchorDay, readingHistoryBits, today);
 }
 
+bool GlobalReadingStats::readOnDay(const ReadingStatsDate& day) const {
+  return readingHistoryIncludesDay(readingHistoryAnchorDay, readingHistoryBits, day);
+}
+
 uint16_t GlobalReadingStats::displayLongestReadingStreak() const {
   return std::max(longestReadingStreak,
                   computeReadingHistoryLongestStreak(readingHistoryAnchorDay, readingHistoryBits));

@@ -23,6 +23,7 @@
 #include "activities/reader/BookStatsTracking.h"
 #include "activities/reader/GlobalReadingStats.h"
 #include "activities/reader/ReadingStatsUtils.h"
+#include "components/StreakCheck.h"
 #include "components/TouchRegistry.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -446,16 +447,22 @@ void formatStreakStat(const GlobalReadingStats* globalStats, char* buf, const si
 }
 
 void drawIconLabel(const GfxRenderer& renderer, const uint8_t* icon, const int iconX, const int centerY,
-                   const char* label, const int maxTextW, const bool inverted = false) {
-  const std::string visibleLabel = renderer.truncatedText(UI_10_FONT_ID, label, maxTextW);
+                   const char* label, const int maxTextW, const bool inverted = false,
+                   const bool trailingCheck = false) {
+  const int checkWidth = trailingCheck ? StreakCheck::trailingWidth() : 0;
+  const std::string visibleLabel = renderer.truncatedText(UI_10_FONT_ID, label, std::max(1, maxTextW - checkWidth));
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
   if (inverted) {
     renderer.drawIconInverted(icon, iconX, centerY - kFooterIconSize / 2, kFooterIconSize, kFooterIconSize);
   } else {
     renderer.drawIcon(icon, iconX, centerY - kFooterIconSize / 2, kFooterIconSize, kFooterIconSize);
   }
-  renderer.drawText(UI_10_FONT_ID, iconX + kFooterIconSize + kFooterIconTextGap, centerY - lineH / 2,
-                    visibleLabel.c_str(), !inverted);
+  const int textX = iconX + kFooterIconSize + kFooterIconTextGap;
+  renderer.drawText(UI_10_FONT_ID, textX, centerY - lineH / 2, visibleLabel.c_str(), !inverted);
+  if (trailingCheck) {
+    const int textW = renderer.getTextWidth(UI_10_FONT_ID, visibleLabel.c_str());
+    StreakCheck::draw(renderer, textX + textW + StreakCheck::GAP, centerY, !inverted);
+  }
 }
 
 void drawRightAlignedIconLabel(const GfxRenderer& renderer, const uint8_t* icon, const int rightX, const int centerY,
@@ -529,7 +536,8 @@ void drawFooterStats(const GfxRenderer& renderer, const Rect& coverRect, const G
   formatStreakStat(globalStats, streakBuf, sizeof(streakBuf));
 
   const int leftTextW = renderer.getScreenWidth() / 2 - inset - kFooterIconSize - kFooterIconTextGap;
-  drawIconLabel(renderer, StreakIcon, coverRect.x, centerY, streakBuf, leftTextW, inverted);
+  drawIconLabel(renderer, StreakIcon, coverRect.x, centerY, streakBuf, leftTextW, inverted,
+                globalStats != nullptr && StreakCheck::extendedToday(*globalStats));
 
   const char* readerLabel = readerTypeLabel(globalStats);
   const int rightX = renderer.getScreenWidth() - inset - (gpio.deviceIsX3() ? kPairInwardShiftX3 : 0);

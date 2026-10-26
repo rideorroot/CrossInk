@@ -53,8 +53,11 @@
 #include "activities/settings/StorageActivity.h"
 #include "activities/util/FrontlightPanelActivity.h"
 #include "components/HeaderDate.h"
+#include "components/StreakCheck.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
+#include "components/themes/dashboard/DashboardTheme.h"
+#include "components/themes/minimal/MinimalTheme.h"
 #include "simulator/SimulatorHomeKeyInput.h"
 #include "util/ButtonShortcutController.h"
 #include "util/FolderReadCounts.h"
@@ -457,6 +460,42 @@ class SimulatorSmokeTest {
     expectFolderCounts("/Bibliothek/Leer", 0, 0);
     expectFolderCounts(READ_MARKS_ROOT, 3, 7);
     LOG_INF("SMOKE", "Read marks: index, stats and folder counts passed");
+  }
+
+  static void verifyStreakCheck() {
+    ReadingStatsDateTime now;
+    if (!getCurrentLocalReadingStatsDateTime(now)) fail("Streak check needs the simulated RTC (simulator-X3)");
+    const uint32_t today = readingStatsDayIndex(now.date);
+
+    GlobalReadingStats readToday;
+    readToday.totalReadingSeconds = 3 * 3600;
+    readToday.timeOfDaySeconds[static_cast<size_t>(ReadingTimeBucket::Evening)] = 3 * 3600;
+    for (uint32_t d = today - 4; d <= today; ++d) {
+      markReadingHistoryDay(readToday.readingHistoryAnchorDay, readToday.readingHistoryBits, d);
+    }
+    GlobalReadingStats readYesterday = readToday;
+    readYesterday.readingHistoryAnchorDay = 0;
+    readYesterday.readingHistoryBits = {};
+    for (uint32_t d = today - 4; d < today; ++d) {
+      markReadingHistoryDay(readYesterday.readingHistoryAnchorDay, readYesterday.readingHistoryBits, d);
+    }
+    if (!StreakCheck::extendedToday(readToday) || StreakCheck::extendedToday(readYesterday))
+      fail("Streak 'read today' detection mismatch");
+    if (readToday.currentReadingStreak(&now.date) != 5 || readYesterday.currentReadingStreak(&now.date) != 4)
+      fail("Unexpected streak lengths");
+
+    RecentBook book{"/books/streak.epub", "Der Name der Rose", "Umberto Eco", ""};
+    BookReadingStats bookStats;
+    RenderLock lock;
+    MinimalTheme minimal;
+    minimal.drawStatsSleepScreen(renderer, book, &bookStats, &readToday, 0.42f, false);
+    captureReadMarksScreen("k1-minimal-heute-gelesen");
+    minimal.drawStatsSleepScreen(renderer, book, &bookStats, &readYesterday, 0.42f, false);
+    captureReadMarksScreen("k2-minimal-noch-nicht");
+    DashboardTheme dashboard;
+    dashboard.drawSleepScreen(renderer, book, &bookStats, &readToday, 0.42f, "Erster Tag", false);
+    captureReadMarksScreen("k3-dashboard-heute-gelesen");
+    LOG_INF("SMOKE", "Streak check: detection and sleep screens rendered");
   }
 
   static void verifyEdgeMarginMigration() {
@@ -1356,6 +1395,11 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_STREAK")) {
+          verifyStreakCheck();
+          LOG_INF("SMOKE", "Simulator smoke test passed: streak check");
+          std::_Exit(0);
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_STORAGE")) {
           for (const char* dir : {"/Bibliothek", "/Bibliothek/Krimi", "/.versteckt"}) {
             if (!Storage.exists(dir) && !Storage.mkdir(dir)) fail("Cannot create %s", dir);
