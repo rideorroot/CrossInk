@@ -1,8 +1,14 @@
 ## [Unreleased]
 
+### Fixed
+
+- The base settings list reserves room for every setting again, so it no longer reallocates to twice its size at startup.
+
 ### Added
 
 - File Browser shows books marked as finished with a book-with-check-mark icon, so a complete, categorised library can stay in place instead of moving read books to a separate folder.
+- File Browser: move books and folders to another folder ("Move to..." in the action menu), rename folders, and create folders from a "+ New Folder" row at the end of every list. Reading progress, bookmarks, stats and finished marks move with the books.
+- Names typed on the device replace characters the SD card cannot store (`: ? * " < > | / \`) with readable substitutes instead of silently failing.
 - Sort File Browser folders by author (last name) for books named "<Title> - <Author>": Settings > System > Files & Cache > Sort Files By. Books by the same author are ordered by title; folders stay on top.
 - The reading streak on the Minimal stats and Dashboard sleep screens (and the Dashboard home screen) shows a check mark once today's reading has extended the streak.
 - Settings > System > Storage shows how the SD card is used, split into System, Books and Free, as a bar with a legend and the number of books.

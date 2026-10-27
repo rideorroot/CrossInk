@@ -3,6 +3,7 @@
 #include <FileIndex.h>
 #include <FreeInkApp.h>
 #include <FreeInkUIGfxRenderer.h>
+#include <I18n.h>
 
 #include <array>
 #include <atomic>
@@ -41,6 +42,18 @@ class FileBrowserActivity final : public Activity {
   bool isPinnedBootFavorite(const std::string& fullPath) const;
   void showFileActionMenu(const std::string& entry, bool ignoreInitialConfirmRelease = false);
   void startRenameFile(const std::string& fullPath, const std::string& entry);
+  void startMoveFile(const std::string& fullPath);
+  void startRenameFolder(const std::string& fullPath, const std::string& entry);
+  void startMoveFolder(const std::string& fullPath);
+  void promptNewFolder();
+  void pickDestinationFolder(const std::string& startPath,
+                             void (*onPicked)(FileBrowserActivity*, const std::string&, const std::string&),
+                             const std::string& sourcePath);
+  static void onFilePicked(FileBrowserActivity* self, const std::string& sourcePath, const std::string& destDir);
+  static void onFolderPicked(FileBrowserActivity* self, const std::string& sourcePath, const std::string& destDir);
+  // Reloads the list and puts the selection on `entryName` (if present).
+  void reloadAndSelect(const std::string& entryName);
+  void showToast(const char* message);
   void renameFile(const std::string& oldPath, const std::string& oldEntry, const std::string& newStem,
                   const std::string& extension);
 
@@ -109,6 +122,11 @@ class FileBrowserActivity final : public Activity {
   void loadFilesLocked();
   bool loadFilesIntoVector(size_t cap, bool& overflow);
   size_t entryCount() const;
+  // List rows: the entries plus a trailing "+ New Folder" row where creating
+  // folders makes sense.
+  bool showsNewFolderRow() const;
+  size_t rowCount() const { return entryCount() + (showsNewFolderRow() ? 1 : 0); }
+  bool isNewFolderRow(size_t row) const { return showsNewFolderRow() && row == entryCount(); }
   const char* entryNameAt(size_t row);
   void toggleHiddenFiles();
   // Fills the folder read-count cache for directory rows (Books mode only).
@@ -117,9 +135,13 @@ class FileBrowserActivity final : public Activity {
   static void onSlowFolderCountWalk(void* user);
   size_t findEntry(const std::string& name);
 
+  StrId pickTitleId = StrId::STR_SELECT_RECEIVE_FOLDER;
+
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
                                Mode mode = Mode::Books);
+  // Header text in PickDirectory mode.
+  void setPickTitle(const StrId titleId) { pickTitleId = titleId; }
   void onEnter() override;
   void onExit() override;
   void loop() override;

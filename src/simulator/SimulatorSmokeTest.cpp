@@ -38,6 +38,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/home/BookActions.h"
+#include "activities/home/FileBrowserActivity.h"
 #include "activities/home/HomeActivity.h"
 #include "activities/home/RecentBookProgress.h"
 #include "activities/library/LibraryActivity.h"
@@ -61,6 +62,7 @@
 #include "simulator/SimulatorHomeKeyInput.h"
 #include "util/AuthorSort.h"
 #include "util/ButtonShortcutController.h"
+#include "util/FolderOps.h"
 #include "util/FolderReadCounts.h"
 
 extern ActivityManager activityManager;
@@ -115,6 +117,8 @@ enum class SmokeStep : uint8_t {
   MarginsSettingsOpen,
   MarginsSettingsShown,
   SortShown,
+  FolderOpsBrowser,
+  FolderOpsPicker,
   StorageScan,
   StorageSystemMenu,
   StorageSystemMenuShown,
@@ -462,6 +466,79 @@ class SimulatorSmokeTest {
     expectFolderCounts("/Bibliothek/Leer", 0, 0);
     expectFolderCounts(READ_MARKS_ROOT, 3, 7);
     LOG_INF("SMOKE", "Read marks: index, stats and folder counts passed");
+  }
+
+  static void verifyFolderOps() {
+    // Name rules shared by rename, new folder and folder rename.
+    struct NameCase {
+      const char* in;
+      const char* out;
+    };
+    for (const auto& c :
+         {NameCase{"Star Wars: Episode I", "Star Wars \xE2\x80\x93 Episode I"},
+          NameCase{"Wer hat Angst?", "Wer hat Angst"}, NameCase{"AC/DC", "AC-DC"},
+          NameCase{"  Psychologie & Denken. ", "Psychologie & Denken"}, NameCase{"Sag \"Hallo\"", "Sag 'Hallo'"}}) {
+      const std::string got = FolderOps::sanitizeUserName(c.in);
+      if (got != c.out) fail("sanitizeUserName('%s') = '%s', expected '%s'", c.in, got.c_str(), c.out);
+    }
+
+    SETTINGS.trackReadingStats = 1;
+    SETTINGS.fileBrowserFolderReadCount = 1;
+    SETTINGS.hideFileExtension = 1;
+    for (const char* dir : {"/Bibliothek", "/Bibliothek/Psychologie", "/Bibliothek/Psychologie/Klassiker"}) {
+      if (!Storage.exists(dir) && !Storage.mkdir(dir)) fail("Cannot create %s", dir);
+    }
+    const char* readBook = "/Bibliothek/Psychologie/Schnelles Denken - Daniel Kahneman.epub";
+    const char* nested = "/Bibliothek/Psychologie/Klassiker/Die Traumdeutung - Sigmund Freud.epub";
+    const char* moneyBook = "/Bibliothek/Psychologie/Rich Dad Poor Dad - Robert Kiyosaki.epub";
+    for (const char* book : {readBook, nested, moneyBook}) {
+      if (!Storage.writeFile(book, "folder-ops fixture")) fail("Cannot create %s", book);
+    }
+    toggleFinished(readBook, true);
+    toggleFinished(nested, true);
+    const uint32_t completedBefore = GlobalReadingStats::load().completedBooks;
+
+    // 1. New folder.
+    std::string finanzen;
+    if (FolderOps::createFolder("/Bibliothek", FolderOps::sanitizeUserName("Finanzen"), finanzen) !=
+            FolderOps::Result::Ok ||
+        finanzen != "/Bibliothek/Finanzen" || !Storage.exists(finanzen.c_str()))
+      fail("createFolder failed");
+    std::string dup;
+    if (FolderOps::createFolder("/Bibliothek", "Finanzen", dup) != FolderOps::Result::Exists)
+      fail("createFolder accepted a duplicate");
+
+    // 2. Move a book; it stays unread, nothing else changes.
+    std::string moved;
+    if (FolderOps::moveFile(moneyBook, finanzen, moved) != FolderOps::Result::Ok ||
+        moved != "/Bibliothek/Finanzen/Rich Dad Poor Dad - Robert Kiyosaki.epub" || Storage.exists(moneyBook) ||
+        !Storage.exists(moved.c_str()))
+      fail("moveFile failed");
+
+    // 3. Rename a folder with a finished book and a finished book in a subfolder.
+    size_t movedCount = 0;
+    size_t failedCount = 0;
+    if (FolderOps::relocateFolder("/Bibliothek/Psychologie", "/Bibliothek/Psychologie & Denken", movedCount,
+                                  failedCount) != FolderOps::Result::Ok ||
+        movedCount != 2 || failedCount != 0)
+      fail("relocateFolder failed (%u moved, %u failed)", static_cast<unsigned>(movedCount),
+           static_cast<unsigned>(failedCount));
+    if (Storage.exists("/Bibliothek/Psychologie")) fail("Old folder was not removed");
+    const char* readNew = "/Bibliothek/Psychologie & Denken/Schnelles Denken - Daniel Kahneman.epub";
+    const char* nestedNew = "/Bibliothek/Psychologie & Denken/Klassiker/Die Traumdeutung - Sigmund Freud.epub";
+    if (!FINISHED_BOOKS.isFinishedBook(readNew) || !FINISHED_BOOKS.isFinishedBook(nestedNew))
+      fail("Finished marks did not follow the renamed folder");
+    if (FINISHED_BOOKS.isFinishedBook(readBook)) fail("Finished mark stayed at the old path");
+    if (!BookActions::isBookCompleted(readNew)) fail("Reading stats did not follow the renamed folder");
+    if (GlobalReadingStats::load().completedBooks != completedBefore) fail("Moving changed 'books read'");
+    expectFolderCounts("/Bibliothek/Psychologie & Denken", 2, 2);
+
+    // 4. A folder cannot move into itself.
+    if (FolderOps::relocateFolder("/Bibliothek/Psychologie & Denken",
+                                  "/Bibliothek/Psychologie & Denken/Klassiker/Psychologie & Denken", movedCount,
+                                  failedCount) != FolderOps::Result::InvalidTarget)
+      fail("relocateFolder allowed moving a folder into itself");
+    LOG_INF("SMOKE", "Folder ops: names, new folder, move, folder rename with stats passed");
   }
 
   static void verifyStreakCheck() {
@@ -1397,6 +1474,12 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_FOLDER_OPS")) {
+          verifyFolderOps();
+          activityManager.goToFileBrowser("/Bibliothek");
+          queueStep("Folder ops: library", SmokeStep::FolderOpsBrowser, 4);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_SORT")) {
           const std::vector<std::string> names = {
               "Die Sturmfelsakademie 2 (Das Tor der Toten) - Torsten Weitze.epub",
@@ -2358,6 +2441,21 @@ class SimulatorSmokeTest {
       case SmokeStep::ReadMarksSettings:
         captureReadMarksScreen("5-einstellungen");
         LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
+        std::_Exit(0);
+
+      case SmokeStep::FolderOpsBrowser: {
+        captureReadMarksScreen("f1-bibliothek-neuer-ordner");
+        auto picker = std::make_unique<FileBrowserActivity>(renderer, mappedInputManager, "/Bibliothek",
+                                                            FileBrowserActivity::Mode::PickDirectory);
+        picker->setPickTitle(StrId::STR_MOVE_HERE_TITLE);
+        activityManager.replaceActivity(std::move(picker));
+        queueStep("Folder ops: move target picker", SmokeStep::FolderOpsPicker, 4);
+        break;
+      }
+
+      case SmokeStep::FolderOpsPicker:
+        captureReadMarksScreen("f2-verschieben-nach");
+        LOG_INF("SMOKE", "Simulator smoke test passed: folder ops");
         std::_Exit(0);
 
       case SmokeStep::SortShown:
