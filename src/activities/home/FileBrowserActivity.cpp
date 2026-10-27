@@ -1639,7 +1639,7 @@ void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
       names[i] = selectHere ? I18N.get(pickRowLabelId) : tr(STR_NEW_FOLDER);
       fui::ListItem item;
       item.label = names[i].c_str();
-      item.icon = selectHere ? fui::bitmapFromIcon(twoLineRows ? icon_folder_check_32 : icon_folder_check_24)
+      item.icon = selectHere ? fui::bitmapFromIcon(twoLineRows ? icon_move_here_32 : icon_move_here_24)
                              : fui::bitmapFromIcon(twoLineRows ? icon_folder_plus_32 : icon_folder_plus_24);
       item.actionValue = static_cast<int16_t>(usesVirtualList ? entryIndex : i);
       items.push_back(item);
