@@ -124,9 +124,17 @@ class FileBrowserActivity final : public Activity {
   size_t entryCount() const;
   // List rows: the entries plus a trailing "+ New Folder" row where creating
   // folders makes sense.
+  // Folder pickers also get a "select this folder" row right after the
+  // entries, so they navigate with the same buttons as the normal browser.
   bool showsNewFolderRow() const;
-  size_t rowCount() const { return entryCount() + (showsNewFolderRow() ? 1 : 0); }
-  bool isNewFolderRow(size_t row) const { return showsNewFolderRow() && row == entryCount(); }
+  bool showsSelectHereRow() const { return mode == Mode::PickDirectory; }
+  size_t rowCount() const { return entryCount() + (showsSelectHereRow() ? 1 : 0) + (showsNewFolderRow() ? 1 : 0); }
+  bool isSelectHereRow(size_t row) const { return showsSelectHereRow() && row == entryCount(); }
+  bool isNewFolderRow(size_t row) const {
+    return showsNewFolderRow() && row == entryCount() + (showsSelectHereRow() ? 1 : 0);
+  }
+  bool isEntryRow(size_t row) const { return row < entryCount(); }
+  void selectCurrentFolder();
   const char* entryNameAt(size_t row);
   void toggleHiddenFiles();
   // Fills the folder read-count cache for directory rows (Books mode only).
@@ -136,12 +144,16 @@ class FileBrowserActivity final : public Activity {
   size_t findEntry(const std::string& name);
 
   StrId pickTitleId = StrId::STR_SELECT_RECEIVE_FOLDER;
+  StrId pickRowLabelId = StrId::STR_USE_THIS_FOLDER;
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
                                Mode mode = Mode::Books);
   // Header text in PickDirectory mode.
-  void setPickTitle(const StrId titleId) { pickTitleId = titleId; }
+  void setPickTitle(const StrId titleId, const StrId rowLabelId = StrId::STR_USE_THIS_FOLDER) {
+    pickTitleId = titleId;
+    pickRowLabelId = rowLabelId;
+  }
   void onEnter() override;
   void onExit() override;
   void loop() override;

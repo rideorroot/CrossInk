@@ -533,9 +533,22 @@ class SimulatorSmokeTest {
     if (GlobalReadingStats::load().completedBooks != completedBefore) fail("Moving changed 'books read'");
     expectFolderCounts("/Bibliothek/Psychologie & Denken", 2, 2);
 
-    // 4. A folder cannot move into itself.
+    // 4. Move a subfolder with one book into a sibling: the parent total stays.
+    FolderReadCounts::Counts parentBefore;
+    if (!FolderReadCounts::compute("/Bibliothek", parentBefore)) fail("Parent counts unavailable");
+    expectFolderCounts("/Bibliothek/Finanzen", 0, 1);
+    if (FolderOps::relocateFolder("/Bibliothek/Psychologie & Denken/Klassiker", "/Bibliothek/Finanzen/Klassiker",
+                                  movedCount, failedCount) != FolderOps::Result::Ok ||
+        movedCount != 1)
+      fail("Moving a subfolder into a sibling failed");
+    expectFolderCounts("/Bibliothek", parentBefore.finished, parentBefore.total);
+    expectFolderCounts("/Bibliothek/Finanzen", 1, 2);
+    expectFolderCounts("/Bibliothek/Psychologie & Denken", 1, 1);
+    LOG_INF("SMOKE", "Folder ops: parent count after subfolder move %u/%u", parentBefore.finished, parentBefore.total);
+
+    // 5. A folder cannot move into itself.
     if (FolderOps::relocateFolder("/Bibliothek/Psychologie & Denken",
-                                  "/Bibliothek/Psychologie & Denken/Klassiker/Psychologie & Denken", movedCount,
+                                  "/Bibliothek/Psychologie & Denken/Sub/Psychologie & Denken", movedCount,
                                   failedCount) != FolderOps::Result::InvalidTarget)
       fail("relocateFolder allowed moving a folder into itself");
     LOG_INF("SMOKE", "Folder ops: names, new folder, move, folder rename with stats passed");
@@ -2447,7 +2460,7 @@ class SimulatorSmokeTest {
         captureReadMarksScreen("f1-bibliothek-neuer-ordner");
         auto picker = std::make_unique<FileBrowserActivity>(renderer, mappedInputManager, "/Bibliothek",
                                                             FileBrowserActivity::Mode::PickDirectory);
-        picker->setPickTitle(StrId::STR_MOVE_HERE_TITLE);
+        picker->setPickTitle(StrId::STR_MOVE_HERE_TITLE, StrId::STR_MOVE_HERE);
         activityManager.replaceActivity(std::move(picker));
         queueStep("Folder ops: move target picker", SmokeStep::FolderOpsPicker, 4);
         break;

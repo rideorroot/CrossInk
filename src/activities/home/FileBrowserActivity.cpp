@@ -1092,7 +1092,7 @@ void FileBrowserActivity::pickDestinationFolder(const std::string& startPath,
     LOG_ERR("FileBrowser", "OOM: move destination picker");
     return;
   }
-  picker->setPickTitle(StrId::STR_MOVE_HERE_TITLE);
+  picker->setPickTitle(StrId::STR_MOVE_HERE_TITLE, StrId::STR_MOVE_HERE);
   startActivityForResult(std::move(picker), [this, onPicked, sourcePath](const ActivityResult& result) {
     if (result.isCancelled) {
       // The picker may have created folders; show them.
@@ -1197,11 +1197,11 @@ void FileBrowserActivity::onRowEvent(const fui::ActionEvent& event, void* user) 
     const size_t row = self->actionWindowFirst + static_cast<size_t>(event.value);
     if (row >= self->rowCount()) return;
     self->selectorIndex = row;
-    if (!self->isNewFolderRow(row)) entry = self->entryNameAt(self->selectorIndex);
+    if (self->isEntryRow(row)) entry = self->entryNameAt(self->selectorIndex);
   }
   if (entry.empty()) {
     self->app.clearTapFlash();
-    if (!event.longPress) self->promptNewFolder();
+    if (!event.longPress) self->activateSelected();
     return;
   }
   if (event.longPress && self->mode == Mode::Books) {
@@ -1252,16 +1252,27 @@ void FileBrowserActivity::openSettings() {
       });
 }
 
+void FileBrowserActivity::selectCurrentFolder() {
+  ActivityResult result{FilePathResult{normalizeDirectoryPath(basepath)}};
+  result.isCancelled = false;
+  setResult(std::move(result));
+  finish();
+}
+
 void FileBrowserActivity::activateSelected() {
   if (lockNextConfirmRelease) {
     lockNextConfirmRelease = false;
+    return;
+  }
+  if (isSelectHereRow(selectorIndex)) {
+    selectCurrentFolder();
     return;
   }
   if (isNewFolderRow(selectorIndex)) {
     promptNewFolder();
     return;
   }
-  if (entryCount() == 0) return;
+  if (!isEntryRow(selectorIndex)) return;
 
   const std::string entry = entryNameAt(selectorIndex);
   const bool isDirectory = (entry.back() == '/');
@@ -1318,16 +1329,6 @@ void FileBrowserActivity::loop() {
     }
   }
 
-  // In directory-picker mode the fourth front button selects the folder shown
-  // in the path band; Confirm continues to descend into the highlighted child.
-  if (mode == Mode::PickDirectory && mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    ActivityResult result{FilePathResult{normalizeDirectoryPath(basepath)}};
-    result.isCancelled = false;
-    setResult(std::move(result));
-    finish();
-    return;
-  }
-
   // Long press BACK (1s+) toggles hidden files (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && !longPressBackHandled && mappedInput.isPressed(MappedInputManager::Button::Back) &&
@@ -1343,7 +1344,7 @@ void FileBrowserActivity::loop() {
   }
 
   const int listSize = static_cast<int>(rowCount());
-  if (entryCount() > 0 && !isNewFolderRow(selectorIndex)) {
+  if (isEntryRow(selectorIndex)) {
     const std::string entry = entryNameAt(selectorIndex);
     const bool isDirectory = (entry.back() == '/');
     if (mode == Mode::Books && !longPressConfirmHandled && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
@@ -1466,14 +1467,7 @@ void FileBrowserActivity::loop() {
     }
     moveSelection(previousIndex);
   };
-  if (mode == Mode::PickDirectory) {
-    // The front-right button selects this folder. Keep navigation on the side
-    // buttons so the remaining front-left button is not a misleading one-way control.
-    buttonNavigator.onRelease({MappedInputManager::Button::Down}, moveNext);
-    buttonNavigator.onRelease({MappedInputManager::Button::Up}, movePrevious);
-    buttonNavigator.onContinuous({MappedInputManager::Button::Down}, pageNext);
-    buttonNavigator.onContinuous({MappedInputManager::Button::Up}, pagePrevious);
-  } else {
+  {
     buttonNavigator.onNextRelease(moveNext);
     buttonNavigator.onPreviousRelease(movePrevious);
     buttonNavigator.onNextContinuous(pageNext);
@@ -1640,11 +1634,13 @@ void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
   items.reserve(drawCount);
   for (size_t i = 0; i < drawCount; i++) {
     const size_t entryIndex = static_cast<size_t>(topIndex) + i;
-    if (isNewFolderRow(entryIndex)) {
-      names[i] = std::string("+ ") + tr(STR_NEW_FOLDER);
+    if (!isEntryRow(entryIndex)) {
+      const bool selectHere = isSelectHereRow(entryIndex);
+      names[i] = selectHere ? I18N.get(pickRowLabelId) : tr(STR_NEW_FOLDER);
       fui::ListItem item;
       item.label = names[i].c_str();
-      item.icon = fui::bitmapFromIcon(twoLineRows ? icon_folder_plus_32 : icon_folder_plus_24);
+      item.icon = selectHere ? fui::bitmapFromIcon(twoLineRows ? icon_folder_check_32 : icon_folder_check_24)
+                             : fui::bitmapFromIcon(twoLineRows ? icon_folder_plus_32 : icon_folder_plus_24);
       item.actionValue = static_cast<int16_t>(usesVirtualList ? entryIndex : i);
       items.push_back(item);
       continue;
@@ -1761,13 +1757,15 @@ void FileBrowserActivity::render(RenderLock&&) {
                                            : mappedInput.withBackArrow(tr(STR_BACK));
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
-  const bool selectingFirmwareFile = mode == Mode::PickFirmware && visibleEntries > 0 &&
-                                     !isNewFolderRow(selectorIndex) &&
-                                     std::string(entryNameAt(selectorIndex)).back() != '/';
-  const char* confirmLabel = visibleEntries == 0 ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN));
-  const auto labels = mappedInput.mapLabels(
-      backLabel, confirmLabel, visibleEntries == 0 || mode == Mode::PickDirectory ? "" : tr(STR_DIR_UP),
-      mode == Mode::PickDirectory ? tr(STR_SELECT) : (visibleEntries == 0 ? "" : tr(STR_DIR_DOWN)));
+  const bool selectingFirmwareFile =
+      mode == Mode::PickFirmware && isEntryRow(selectorIndex) && std::string(entryNameAt(selectorIndex)).back() != '/';
+  const char* confirmLabel = visibleEntries == 0
+                                 ? ""
+                                 : ((selectingFirmwareFile || isSelectHereRow(selectorIndex))
+                                        ? tr(STR_SELECT)
+                                        : (isNewFolderRow(selectorIndex) ? tr(STR_CREATE_FOLDER_HINT) : tr(STR_OPEN)));
+  const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, visibleEntries == 0 ? "" : tr(STR_DIR_UP),
+                                            visibleEntries == 0 ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   if (!mappedInput.hasTouch() && mode == Mode::Books && basepath == "/") {
