@@ -53,6 +53,8 @@ int mainMenuIconYOffset(const UIIcon icon) {
       return -4;
     case UIIcon::Opds:
       return -4;
+    case UIIcon::Search:
+      return -4;
     default:
       return 0;
   }
@@ -77,6 +79,8 @@ const freeink::Icon* LyraTheme::iconForName(UIIcon icon, uint32_t size) {
         return &icon_landmark_24;
       case UIIcon::Opds:
         return &icon_lyra_library_24;
+      case UIIcon::Search:
+        return &icon_search_24;
       default:
         return nullptr;
     }
@@ -98,6 +102,8 @@ const freeink::Icon* LyraTheme::iconForName(UIIcon icon, uint32_t size) {
         return &icon_landmark_32;
       case UIIcon::Opds:
         return &icon_lyra_library_32;
+      case UIIcon::Search:
+        return &icon_search_32;
       case UIIcon::Wifi:
         return &icon_wifi_32;
       case UIIcon::Hotspot:

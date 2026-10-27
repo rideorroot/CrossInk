@@ -642,9 +642,10 @@ void LibraryActivity::openSortPicker(const int selectedIndex) {
 }
 
 void LibraryActivity::openMenu() {
-  static constexpr StrId choices[] = {StrId::STR_SEARCH, StrId::STR_SETTINGS_SHORT, StrId::STR_LIBRARY_RESCAN};
+  // CrossInk: Search sits on the left button, so Sort moves into the menu.
+  static constexpr StrId choices[] = {StrId::STR_SORT, StrId::STR_SETTINGS_SHORT, StrId::STR_LIBRARY_RESCAN};
   actionPopup.show(StrId::STR_MENU, choices, 3, 0, [this](const int selected) {
-    if (selected == 0) openSearch();
+    if (selected == 0) openSortPicker();
     if (selected == 1) openSettings();
     if (selected == 2) refreshLibrary();
   });
@@ -937,7 +938,7 @@ void LibraryActivity::handleInput(const LibraryInputBuffer::Event& input) {
   if (!mappedInput.hasTouchHardware()) {
     if (input.type == Type::LeftRelease) {
       pendingInput.clear();
-      openSortPicker();
+      openSearch();
       return;
     }
     if (input.type == Type::RightRelease) {
@@ -1420,10 +1421,10 @@ void LibraryActivity::render(RenderLock&&) {
     renderer.clearScreen();
     const auto header = TouchHeaderBackButton::headerRect(renderer, mappedInput);
     if (mappedInput.hasTouchHardware())
-      TouchHeaderBackButton::draw(renderer, uiTarget, header, tr(STR_LIBRARY), false,
+      TouchHeaderBackButton::draw(renderer, uiTarget, header, tr(STR_SEARCH), false,
                                   3 * HEADER_CONTROL_SIZE + 2 * HEADER_CONTROL_GAP + headerControlRightInset() + 10);
     else
-      GUI.drawHeader(renderer, header, tr(STR_LIBRARY));
+      GUI.drawHeader(renderer, header, tr(STR_SEARCH));
     app.render();
     topIndex = listNav.top;
     if (!listNav.consumeRebuildNeeded()) break;
@@ -1435,7 +1436,7 @@ void LibraryActivity::render(RenderLock&&) {
                                                                                 : tr(STR_OPEN);
   const auto labels =
       mappedInput.mapLabels(mappedInput.withBackArrow(query.empty() ? tr(STR_HOME) : tr(STR_BACK)), confirmLabel,
-                            mappedInput.hasTouchHardware() ? tr(STR_DIR_UP) : tr(STR_SORT),
+                            mappedInput.hasTouchHardware() ? tr(STR_DIR_UP) : tr(STR_SEARCH),
                             mappedInput.hasTouchHardware() ? tr(STR_DIR_DOWN) : tr(STR_MENU));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   char footer[32];

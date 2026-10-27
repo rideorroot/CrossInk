@@ -235,8 +235,9 @@ const char* savedItemsLabel(bool hasBookmarks, bool hasClippings) {
 
 void appendHomeMenuItems(HomeMenuEntries& items, bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks,
                          bool hasClippings) {
-  items.push({tr(STR_BROWSE_FILES), Folder, HomeMenuAction::BrowseFiles});
-  items.push({tr(STR_LIBRARY), Library, HomeMenuAction::Library});
+  // CrossInk: the folder browser is the Library; the metadata index is Search.
+  items.push({tr(STR_LIBRARY), Library, HomeMenuAction::BrowseFiles});
+  items.push({tr(STR_SEARCH), Search, HomeMenuAction::Library});
 
   if (hasOpdsServers) {
     items.push({tr(STR_OPDS_BROWSER), Opds, HomeMenuAction::OpdsBrowser});
@@ -261,9 +262,9 @@ HomeMenuEntries buildHomeMenuItems(bool hasOpdsServers, bool hasReadingStats, bo
 HomeMenuEntries buildMinimalMenuItems(bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks, bool hasClippings) {
   HomeMenuEntries items;
   if (SETTINGS.isLibraryFileBrowserSwapped()) {
-    items.push({tr(STR_BROWSE_FILES), Folder, HomeMenuAction::BrowseFiles});
+    items.push({tr(STR_LIBRARY), Library, HomeMenuAction::BrowseFiles});
   } else {
-    items.push({tr(STR_LIBRARY), Library, HomeMenuAction::Library});
+    items.push({tr(STR_SEARCH), Search, HomeMenuAction::Library});
   }
 
   if (hasOpdsServers) {
@@ -2121,7 +2122,7 @@ void HomeActivity::render(RenderLock&&) {
     if (showMinimalHomeButtonHints(mappedInput)) {
       MinimalTheme::setHomeButtonHintSelection(minimalHomeNavIndex);
       GUI.drawButtonHints(renderer, tr(STR_MENU),
-                          SETTINGS.isLibraryFileBrowserSwapped() ? tr(STR_LIBRARY) : tr(STR_BROWSE),
+                          SETTINGS.isLibraryFileBrowserSwapped() ? tr(STR_SEARCH) : tr(STR_LIBRARY),
                           tr(STR_SETTINGS_SHORT), recentBooks.empty() ? "" : tr(STR_READ));
     }
 

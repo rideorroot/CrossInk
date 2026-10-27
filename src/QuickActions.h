@@ -52,7 +52,7 @@ inline constexpr std::array<StrId, CrossPointSettings::QUICK_ACTION_SLOT_ACTION_
     StrId::STR_TILT_PAGE_TURN,
     StrId::STR_READER_DARK_MODE,
     StrId::STR_FOOTNOTES,
-    StrId::STR_BROWSE_FILES,
+    StrId::STR_LIBRARY,
     StrId::STR_CALIBRE_WIRELESS,
     StrId::STR_JOIN_NETWORK,
     StrId::STR_CREATE_HOTSPOT,
@@ -130,7 +130,7 @@ inline StrId actionLabel(const uint8_t action) {
   if (action == CrossPointSettings::QUICK_LOCK) return StrId::STR_QUICK_LOCK;
   if (action == CrossPointSettings::PREVIOUS_PAGE) return StrId::STR_PREV_PAGE;
   if (action == CrossPointSettings::NEARBY_POSITION_SYNC) return StrId::STR_NEARBY_POSITION_SYNC;
-  if (action == CrossPointSettings::LIBRARY) return StrId::STR_LIBRARY;
+  if (action == CrossPointSettings::LIBRARY) return StrId::STR_SEARCH;
   if (action == CrossPointSettings::HOME_READER) return StrId::STR_HOME_READER;
   return StrId::STR_HOME_BUTTON_LOCK;
 }

@@ -119,6 +119,9 @@ enum class SmokeStep : uint8_t {
   SortShown,
   FolderOpsBrowser,
   FolderOpsPicker,
+  NamesHome,
+  NamesSearch,
+  NamesSearchMenu,
   StorageScan,
   StorageSystemMenu,
   StorageSystemMenuShown,
@@ -924,7 +927,7 @@ class SimulatorSmokeTest {
       const auto raw = shortcutRawValue(catalog, CrossPointSettings::LIBRARY);
       const auto choice = std::find(setting.enumRawValues.begin(), setting.enumRawValues.end(), raw);
       return choice != setting.enumRawValues.end() &&
-             setting.enumValues[static_cast<size_t>(choice - setting.enumRawValues.begin())] == StrId::STR_LIBRARY;
+             setting.enumValues[static_cast<size_t>(choice - setting.enumRawValues.begin())] == StrId::STR_SEARCH;
     };
     const auto verifyLibraryChoice = [&](const char* key, const ShortcutOptionCatalog catalog) {
       const auto setting = std::find_if(allSettings.begin(), allSettings.end(),
@@ -1039,7 +1042,7 @@ class SimulatorSmokeTest {
       }
     }
     if (!QuickActions::isQuickActionSlotActionAvailable(CrossPointSettings::LIBRARY) ||
-        QuickActions::actionLabel(CrossPointSettings::LIBRARY) != StrId::STR_LIBRARY) {
+        QuickActions::actionLabel(CrossPointSettings::LIBRARY) != StrId::STR_SEARCH) {
       fail("Library is missing from Quick Actions choices");
     }
 
@@ -1487,6 +1490,11 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_NAMES")) {
+          activityManager.goHome();
+          queueStep("Names: home", SmokeStep::NamesHome, 8);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_FOLDER_OPS")) {
           verifyFolderOps();
           activityManager.goToFileBrowser("/Bibliothek");
@@ -2454,6 +2462,27 @@ class SimulatorSmokeTest {
       case SmokeStep::ReadMarksSettings:
         captureReadMarksScreen("5-einstellungen");
         LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
+        std::_Exit(0);
+
+      case SmokeStep::NamesHome:
+        captureReadMarksScreen("n1-home");
+        activityManager.goToLibrary();
+        queueStep("Names: search", SmokeStep::NamesSearch, 12);
+        break;
+
+      case SmokeStep::NamesSearch:
+        captureReadMarksScreen("n2-search");
+        inputScript.clear();
+        scriptIndex = 0;
+        inputCompletionStep = SmokeStep::NamesSearchMenu;
+        addTap(MappedInputManager::Button::Right);
+        inputScript.push_back(render("Names: search menu", 4));
+        step = SmokeStep::ReaderInput;
+        break;
+
+      case SmokeStep::NamesSearchMenu:
+        captureReadMarksScreen("n3-search-menu");
+        LOG_INF("SMOKE", "Simulator smoke test passed: names");
         std::_Exit(0);
 
       case SmokeStep::FolderOpsBrowser: {
