@@ -932,6 +932,7 @@ inline std::vector<SettingInfo> buildControlsPowerSettingsList(const std::vector
   settings.reserve(4);
   addSettingByKey(settings, allSettings, "shortPwrBtn");
   addSettingByKey(settings, allSettings, "longPwrBtn");
+  addSettingByKey(settings, allSettings, "powerButtonHoldTime");
   if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FOOTNOTES ||
       SETTINGS.longPwrBtn == CrossPointSettings::SHORT_PWRBTN::FOOTNOTES ||
       SETTINGS.longPressMenuAction == CrossPointSettings::LONG_PRESS_MENU_ACTION::LONG_MENU_FOOTNOTES ||
@@ -1038,6 +1039,7 @@ inline std::vector<SettingInfo> buildDisplaySleepSettingsList(const std::vector<
   addSleepSetting(StrId::STR_SLEEP_COVER_MODE, StrId::STR_SLEEP_COVER_MODE_SHORT);
   addSleepSetting(StrId::STR_SLEEP_COVER_FILTER, StrId::STR_SLEEP_COVER_FILTER_SHORT);
   addSleepSetting(StrId::STR_QUICK_RESUME_TIMEOUT, StrId::STR_QUICK_RESUME_TIMEOUT);
+  addSleepSetting(StrId::STR_STREAK_MIDNIGHT_REFRESH, StrId::STR_STREAK_MIDNIGHT_REFRESH);
 
   return sleepSettings;
 }

@@ -63,8 +63,8 @@
 #include "util/AuthorSort.h"
 #include "util/ButtonShortcutController.h"
 #include "util/FolderOps.h"
-#include "util/MidnightWake.h"
 #include "util/FolderReadCounts.h"
+#include "util/MidnightWake.h"
 
 extern ActivityManager activityManager;
 extern GfxRenderer renderer;
@@ -120,6 +120,10 @@ enum class SmokeStep : uint8_t {
   SortShown,
   FolderOpsBrowser,
   FolderOpsPicker,
+  NewSettingsSleep,
+  NewSettingsSleepShown,
+  NewSettingsPower,
+  NewSettingsPowerShown,
   NamesHome,
   NamesSearch,
   NamesSearchMenu,
@@ -567,7 +571,8 @@ class SimulatorSmokeTest {
       if (SETTINGS.getPowerButtonLongPressDuration() != 200 || SETTINGS.getPowerButtonWakeDuration() != 200)
         fail("Power hold time setting is not applied");
       SETTINGS.powerButtonHoldTime = 99;
-      if (SETTINGS.getPowerButtonLongPressDuration() != 400) fail("Invalid power hold time does not fall back to 0.4 s");
+      if (SETTINGS.getPowerButtonLongPressDuration() != 400)
+        fail("Invalid power hold time does not fall back to 0.4 s");
       SETTINGS.powerButtonHoldTime = savedHold;
       SETTINGS.shortPwrBtn = savedShort;
 
@@ -580,6 +585,13 @@ class SimulatorSmokeTest {
       SETTINGS.sleepStreakMidnightRefresh = 0;
       if (MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake armed while switched off");
       SETTINGS.sleepStreakMidnightRefresh = 1;
+      const auto hasKey = [](const std::vector<SettingInfo>& list, const char* key) {
+        return std::any_of(list.begin(), list.end(), [key](const SettingInfo& s) { return settingKeyIs(s, key); });
+      };
+      if (!hasKey(buildDisplaySleepSettingsList(getSettingsList()), "sleepStreakMidnightRefresh"))
+        fail("Midnight streak refresh is missing from the sleep screen menu");
+      if (!hasKey(buildControlsPowerSettingsList(getSettingsList()), "powerButtonHoldTime"))
+        fail("Power hold time is missing from the power button menu");
       LOG_INF("SMOKE", "Streak: hold time and midnight wake arming passed");
     }
     ReadingStatsDateTime now;
@@ -1514,6 +1526,11 @@ class SimulatorSmokeTest {
     switch (step) {
       case SmokeStep::Start:
         LOG_INF("SMOKE", "Starting simulator smoke test");
+        if (std::getenv("CROSSINK_SIMULATOR_SMOKE_NEW_SETTINGS")) {
+          activityManager.replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInputManager));
+          queueStep("New settings: root", SmokeStep::NewSettingsSleep, 4);
+          break;
+        }
         if (std::getenv("CROSSINK_SIMULATOR_SMOKE_NAMES")) {
           activityManager.goHome();
           queueStep("Names: home", SmokeStep::NamesHome, 8);
@@ -2486,6 +2503,34 @@ class SimulatorSmokeTest {
       case SmokeStep::ReadMarksSettings:
         captureReadMarksScreen("5-einstellungen");
         LOG_INF("SMOKE", "Simulator smoke test passed: read marks");
+        std::_Exit(0);
+
+      case SmokeStep::NewSettingsSleep: {
+        {
+          RenderLock lock;
+          auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
+          settings->simulatorOpenSubmenu(0, SettingAction::DisplaySleepScreen, StrId::STR_STREAK_MIDNIGHT_REFRESH);
+        }
+        queueStep("New settings: sleep", SmokeStep::NewSettingsSleepShown, 4);
+        break;
+      }
+      case SmokeStep::NewSettingsSleepShown:
+        captureReadMarksScreen("s1-sleep-screen");
+        activityManager.replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInputManager));
+        queueStep("New settings: root again", SmokeStep::NewSettingsPower, 4);
+        break;
+      case SmokeStep::NewSettingsPower: {
+        {
+          RenderLock lock;
+          auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
+          settings->simulatorOpenSubmenu(2, SettingAction::ControlsPowerButton, StrId::STR_POWER_HOLD_TIME);
+        }
+        queueStep("New settings: power", SmokeStep::NewSettingsPowerShown, 4);
+        break;
+      }
+      case SmokeStep::NewSettingsPowerShown:
+        captureReadMarksScreen("s2-power-button");
+        LOG_INF("SMOKE", "Simulator smoke test passed: new settings");
         std::_Exit(0);
 
       case SmokeStep::NamesHome:
