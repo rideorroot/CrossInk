@@ -654,6 +654,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t hideFileExtension = 0;
   // Show "finished/total" book counts next to folders in the file browser (0 = off, 1 = on)
   uint8_t fileBrowserFolderReadCount = 1;
+  // CrossInk: wake shortly after midnight to redraw a sleep screen that shows today's streak check (0 = off, 1 = on)
+  uint8_t sleepStreakMidnightRefresh = 1;
+  // CrossInk: how long Power must be held for a long press and to wake (POWER_HOLD_TIME)
+  uint8_t powerButtonHoldTime = POWER_HOLD_400;
   // File browser display row style (0 = one-line theme list, 1 = two-line compact display)
   uint8_t fileBrowserDisplay = FILE_BROWSER_DISPLAY_1_LINE;
   // File browser ordering (FILE_BROWSER_SORT).
@@ -709,6 +713,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 
   ~CrossPointSettings() = default;
 
+  enum POWER_HOLD_TIME : uint8_t { POWER_HOLD_150 = 0, POWER_HOLD_200, POWER_HOLD_250, POWER_HOLD_300, POWER_HOLD_400 };
+  static constexpr uint16_t powerHoldMs(const uint8_t choice) {
+    return choice == POWER_HOLD_150   ? 150
+           : choice == POWER_HOLD_200 ? 200
+           : choice == POWER_HOLD_250 ? 250
+           : choice == POWER_HOLD_300 ? 300
+                                      : 400;
+  }
   static constexpr uint16_t POWER_BUTTON_LONG_PRESS_MS = 400;
   static constexpr uint16_t POWER_BUTTON_WAKE_SHORT_MS = 10;
   static constexpr uint16_t POWER_BUTTON_WAKE_LONG_MS = POWER_BUTTON_LONG_PRESS_MS;
@@ -737,7 +749,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   static constexpr size_t MAX_DEVICE_NAME_LENGTH = sizeof(deviceName) - 1;
 
   uint16_t getPowerButtonWakeDuration() const {
-    return shortPowerPressWakes() ? POWER_BUTTON_WAKE_SHORT_MS : POWER_BUTTON_WAKE_LONG_MS;
+    return shortPowerPressWakes() ? POWER_BUTTON_WAKE_SHORT_MS : getPowerButtonLongPressDuration();
   }
 
   bool shortPowerPressWakes() const { return shortPwrBtn == SLEEP || shortPwrBtn == WAKE_ONLY; }
@@ -754,7 +766,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   void* sdFontResolverCtx = nullptr;
 
   uint16_t getPowerButtonDuration() const { return getPowerButtonWakeDuration(); }
-  uint16_t getPowerButtonLongPressDuration() const { return POWER_BUTTON_LONG_PRESS_MS; }
+  uint16_t getPowerButtonLongPressDuration() const { return powerHoldMs(powerButtonHoldTime); }
   static uint8_t getActiveReaderFontSizeCount();
   static uint8_t getStoredReaderFontSize(FONT_SIZE size);
   static uint8_t getReaderFontPointSize(FONT_SIZE size);

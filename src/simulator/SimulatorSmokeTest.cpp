@@ -63,6 +63,7 @@
 #include "util/AuthorSort.h"
 #include "util/ButtonShortcutController.h"
 #include "util/FolderOps.h"
+#include "util/MidnightWake.h"
 #include "util/FolderReadCounts.h"
 
 extern ActivityManager activityManager;
@@ -558,6 +559,29 @@ class SimulatorSmokeTest {
   }
 
   static void verifyStreakCheck() {
+    {
+      const uint8_t savedHold = SETTINGS.powerButtonHoldTime;
+      const uint8_t savedShort = SETTINGS.shortPwrBtn;
+      SETTINGS.shortPwrBtn = CrossPointSettings::FORCE_REFRESH;
+      SETTINGS.powerButtonHoldTime = CrossPointSettings::POWER_HOLD_200;
+      if (SETTINGS.getPowerButtonLongPressDuration() != 200 || SETTINGS.getPowerButtonWakeDuration() != 200)
+        fail("Power hold time setting is not applied");
+      SETTINGS.powerButtonHoldTime = 99;
+      if (SETTINGS.getPowerButtonLongPressDuration() != 400) fail("Invalid power hold time does not fall back to 0.4 s");
+      SETTINGS.powerButtonHoldTime = savedHold;
+      SETTINGS.shortPwrBtn = savedShort;
+
+      // Midnight redraw is armed only when the sleep screen drew the check.
+      MidnightWake::beginSleepScreen();
+      if (MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake armed without a streak check");
+      MidnightWake::beginSleepScreen();
+      MidnightWake::noteStreakCheckDrawn();
+      if (!MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake not armed after a streak check");
+      SETTINGS.sleepStreakMidnightRefresh = 0;
+      if (MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake armed while switched off");
+      SETTINGS.sleepStreakMidnightRefresh = 1;
+      LOG_INF("SMOKE", "Streak: hold time and midnight wake arming passed");
+    }
     ReadingStatsDateTime now;
     if (!getCurrentLocalReadingStatsDateTime(now)) fail("Streak check needs the simulated RTC (simulator-X3)");
     const uint32_t today = readingStatsDayIndex(now.date);

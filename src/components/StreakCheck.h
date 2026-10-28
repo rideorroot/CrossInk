@@ -4,6 +4,7 @@
 
 #include "activities/reader/GlobalReadingStats.h"
 #include "activities/reader/ReadingStatsUtils.h"
+#include "util/MidnightWake.h"
 
 // Small check mark drawn after the reading-streak label once today's reading
 // has extended the streak. Drawn with lines rather than a pre-rotated bitmap,
@@ -26,6 +27,7 @@ inline int trailingWidth() { return GAP + SIZE; }
 
 // Draws the mark with its left edge at x, vertically centred on centerY.
 inline void draw(const GfxRenderer& renderer, const int x, const int centerY, const bool black) {
+  MidnightWake::noteStreakCheckDrawn();
   const int top = centerY - SIZE / 2;
   // Short stroke down-right, long stroke up-right.
   const int midX = x + SIZE * 3 / 8;

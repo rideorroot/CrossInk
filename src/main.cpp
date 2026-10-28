@@ -119,6 +119,7 @@ inline esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_
 #include "util/Dictionary.h"
 #include "util/DictionaryRegistry.h"
 #include "util/FrontlightSchedule.h"
+#include "util/MidnightWake.h"
 #include "util/ScreenshotUtil.h"
 #include "util/SleepWakePolicy.h"
 
@@ -373,6 +374,8 @@ using BootResume = SleepWakePolicy::Resume;
 // device back up against the user's sleep gesture. Never cleared:
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
+// CrossInk: set while a midnight timer wake redraws the sleep screen.
+static bool midnightRedrawInProgress = false;
 
 static void restartWithSilentToken() {
   // Capture the live state for every destination without changing wake preferences.
@@ -1054,6 +1057,21 @@ bool shouldClearX4WakeGhosting() {
 // been released during boot. The write is skipped when the value is unchanged.
 constexpr char WAKE_NVS_NAMESPACE[] = "crosspoint";
 constexpr char WAKE_SHORT_PRESS_KEY[] = "wakeShortPr";
+constexpr char WAKE_HOLD_KEY[] = "wakeHoldCh";
+
+uint16_t readWakeHoldMsFromNvs() {
+#ifdef SIMULATOR
+  return CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS;
+#else
+  nvs_handle_t handle;
+  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK)
+    return CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS;
+  uint8_t value = CrossPointSettings::POWER_HOLD_400;
+  const esp_err_t result = nvs_get_u8(handle, WAKE_HOLD_KEY, &value);
+  nvs_close(handle);
+  return CrossPointSettings::powerHoldMs(result == ESP_OK ? value : CrossPointSettings::POWER_HOLD_400);
+#endif
+}
 
 bool readWakeShortPressFromNvs() {
 #ifdef SIMULATOR
@@ -1075,10 +1093,17 @@ void mirrorWakeShortPressToNvs() {
   if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
   uint8_t current = 0;
   const bool hasCurrent = nvs_get_u8(handle, WAKE_SHORT_PRESS_KEY, &current) == ESP_OK;
+  bool dirty = false;
   if (!hasCurrent || current != expected) {
     nvs_set_u8(handle, WAKE_SHORT_PRESS_KEY, expected);
-    nvs_commit(handle);
+    dirty = true;
   }
+  uint8_t hold = 0;
+  if (nvs_get_u8(handle, WAKE_HOLD_KEY, &hold) != ESP_OK || hold != SETTINGS.powerButtonHoldTime) {
+    nvs_set_u8(handle, WAKE_HOLD_KEY, SETTINGS.powerButtonHoldTime);
+    dirty = true;
+  }
+  if (dirty) nvs_commit(handle);
   nvs_close(handle);
 #endif
 }
@@ -1086,7 +1111,8 @@ void mirrorWakeShortPressToNvs() {
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout) {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
-  APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
+  // A midnight redraw boots without an activity; keep the original value.
+  if (!midnightRedrawInProgress) APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
 
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -1099,7 +1125,9 @@ void enterDeepSleep(bool fromTimeout) {
   // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
   deepSleepInProgress = true;
+  MidnightWake::beginSleepScreen();
   activityManager.goToSleep(fromTimeout);
+  if (!isQuickResumeSleep) MidnightWake::armAfterSleepScreen(fromTimeout);
   // Reader exit may already have saved this state. Save after the sleep screen
   // appears, skipping an unchanged snapshot while still retrying failed saves.
   APP_STATE.saveToFile();
@@ -1272,7 +1300,7 @@ void setup() {
 #ifndef SIMULATOR
   const bool shortPressWakes = readWakeShortPressFromNvs();
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton &&
-      !gpio.verifyPowerButtonWakeup(shortPressWakes, CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS)) {
+      !gpio.verifyPowerButtonWakeup(shortPressWakes, readWakeHoldMsFromNvs())) {
     LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
     powerManager.startDeepSleep(gpio);
   }
@@ -1351,6 +1379,15 @@ void setup() {
   BatteryDiagnosticLog::record(BatteryDiagnosticLog::Event::Wake, BoardConfig::ACTIVE.name,
                                wakeupRouteName(wakeupReason));
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
+  // CrossInk: midnight timer wake for the streak check on the sleep screen.
+  const auto midnightAction = MidnightWake::onBoot();
+  if (midnightAction == MidnightWake::BootAction::SleepAgain) {
+    // Woke early: the panel still shows the right frame, so skip the display.
+    Storage.shutdown();
+    putTiltSensorToSleepForDeepSleep();
+    MidnightWake::armRemaining();
+    powerManager.startDeepSleep(gpio);
+  }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   // Normal boot store deferral adapted from Sichroteph/YACP commit
   // 20af8aee8d3e1d560456753b08d1f52e5488621f (MIT). Accessors load these
@@ -1387,7 +1424,15 @@ void setup() {
     }
   }
   LOG_DBG("LIGHT", "Frontlight boot state: %s (silent=%d)", restoreLightOn ? "on" : "off", isSilentReboot ? 1 : 0);
+  if (midnightAction == MidnightWake::BootAction::Redraw) restoreLightOn = false;
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, restoreLightOn);
+
+  if (midnightAction == MidnightWake::BootAction::Redraw) {
+    // Redraw the sleep screen (now without today's check) and sleep again.
+    setupDisplayAndFonts(false, true, true);
+    midnightRedrawInProgress = true;
+    enterDeepSleep(MidnightWake::redrawFromTimeout());
+  }
 
   if (recoveryFirmwareMode) {
     LOG_INF("MAIN", "Recovery firmware mode (%s + POWER held at boot)",

@@ -588,7 +588,7 @@ inline SettingInfo buildSideButtonActionSetting(const StrId nameId, uint8_t Cros
 // Four edge gesture entries are compiled only for touch devices.
 // +4 for the custom settings (folder read count, bottom/right margins, file sort)
 // and +1 so RTC devices (X3: 109 entries) do not reallocate.
-inline constexpr size_t BASE_SETTINGS_CAPACITY = 109 + (CROSSINK_APP_CAP_TOUCH ? 4 : 0);
+inline constexpr size_t BASE_SETTINGS_CAPACITY = 111 + (CROSSINK_APP_CAP_TOUCH ? 4 : 0);
 
 const std::vector<SettingInfo>& getBaseSettingsList();
 
