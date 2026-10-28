@@ -68,6 +68,7 @@ inline esp_reset_reason_t esp_reset_reason() { return ESP_RST_UNKNOWN; }
 inline esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_WAKEUP_UNDEFINED; }
 #else
 #include <esp_cpu.h>
+#include <esp_rtc_time.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
 #endif
@@ -399,6 +400,9 @@ static WakeTimingEntry wakeTimingEntries[WAKE_TIMING_SLOTS];
 #endif
 static uint16_t bootSetupStartMs = 0;
 static uint32_t bootSetupStartCycles = 0;
+static int bootResetReason = 0;
+static int bootWakeCause = 0;
+static uint64_t bootRtcUs = 0;
 
 void recordWakeTiming(const uint8_t reason) {
 #ifdef SIMULATOR
@@ -431,7 +435,9 @@ void flushWakeTiming(const uint32_t setupEndMs) {
              e.result < 5 ? results[e.result] : "?", last ? "" : " (slept again)");
     text += line;
     if (last) {
-      snprintf(line, sizeof(line), "  boot finished at %lums\n", static_cast<unsigned long>(setupEndMs));
+      snprintf(line, sizeof(line), "  boot finished at %lums reset=%d wake=%d rtcSincePowerOn=%llums\n",
+               static_cast<unsigned long>(setupEndMs), bootResetReason, bootWakeCause,
+               static_cast<unsigned long long>(bootRtcUs / 1000));
       text += line;
     }
   }
@@ -1273,6 +1279,9 @@ void setup() {
   bootSetupStartMs = static_cast<uint16_t>(millis());
 #ifndef SIMULATOR
   bootSetupStartCycles = esp_cpu_get_cycle_count();
+  bootRtcUs = esp_rtc_get_time_us();
+  bootResetReason = static_cast<int>(esp_reset_reason());
+  bootWakeCause = static_cast<int>(esp_sleep_get_wakeup_cause());
 #endif
 #ifdef SIMULATOR
   SimulatorLifecycle::restoreSilentRebootToken(silentRebootMagic, silentRebootTarget, silentRebootPayload);
