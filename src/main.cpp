@@ -67,6 +67,7 @@ enum : int {
 inline esp_reset_reason_t esp_reset_reason() { return ESP_RST_UNKNOWN; }
 inline esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_WAKEUP_UNDEFINED; }
 #else
+#include <esp_cpu.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
 #endif
@@ -374,6 +375,74 @@ using BootResume = SleepWakePolicy::Resume;
 // device back up against the user's sleep gesture. Never cleared:
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
+// CrossInk wake-timing diagnostics: each Power wake attempt is recorded in RTC
+// memory (rejected attempts sleep again before the SD card is up) and written
+// to /wake_timing.txt on the next successful boot.
+struct WakeTimingEntry {
+  uint16_t setupStartMs;
+  uint16_t checkStartMs;
+  uint16_t checkEndMs;
+  uint8_t result;
+  uint8_t reason;
+  uint32_t setupStartCycles;
+};
+constexpr uint32_t WAKE_TIMING_MAGIC = 0x574B544D;
+constexpr uint8_t WAKE_TIMING_SLOTS = 12;
+#ifndef SIMULATOR
+RTC_DATA_ATTR static uint32_t wakeTimingMagic = 0;
+RTC_DATA_ATTR static uint8_t wakeTimingCount = 0;
+RTC_DATA_ATTR static WakeTimingEntry wakeTimingEntries[WAKE_TIMING_SLOTS];
+#else
+static uint32_t wakeTimingMagic = 0;
+static uint8_t wakeTimingCount = 0;
+static WakeTimingEntry wakeTimingEntries[WAKE_TIMING_SLOTS];
+#endif
+static uint16_t bootSetupStartMs = 0;
+static uint32_t bootSetupStartCycles = 0;
+
+void recordWakeTiming(const uint8_t reason) {
+#ifdef SIMULATOR
+  (void)reason;
+#else
+  if (wakeTimingMagic != WAKE_TIMING_MAGIC) {
+    wakeTimingMagic = WAKE_TIMING_MAGIC;
+    wakeTimingCount = 0;
+  }
+  if (wakeTimingCount >= WAKE_TIMING_SLOTS) return;
+  wakeTimingEntries[wakeTimingCount++] = {bootSetupStartMs,
+                                          static_cast<uint16_t>(gpio.wakeCheckStartMs),
+                                          static_cast<uint16_t>(gpio.wakeCheckEndMs),
+                                          gpio.wakeCheckResult,
+                                          reason,
+                                          bootSetupStartCycles};
+#endif
+}
+
+void flushWakeTiming(const uint32_t setupEndMs) {
+  if (wakeTimingMagic != WAKE_TIMING_MAGIC || wakeTimingCount == 0) return;
+  static const char* const results[] = {"skipped", "released-before-check", "released-during-check", "ok", "short-ok"};
+  std::string text;
+  char line[200];
+  for (uint8_t i = 0; i < wakeTimingCount; ++i) {
+    const auto& e = wakeTimingEntries[i];
+    const bool last = i + 1 == wakeTimingCount;
+    snprintf(line, sizeof(line), "attempt %u: reason=%u setupStart=%ums cycles=%lu check=%u-%ums result=%s%s\n", i + 1,
+             e.reason, e.setupStartMs, static_cast<unsigned long>(e.setupStartCycles), e.checkStartMs, e.checkEndMs,
+             e.result < 5 ? results[e.result] : "?", last ? "" : " (slept again)");
+    text += line;
+    if (last) {
+      snprintf(line, sizeof(line), "  boot finished at %lums\n", static_cast<unsigned long>(setupEndMs));
+      text += line;
+    }
+  }
+  text += "--\n";
+  String content = Storage.exists("/wake_timing.txt") ? Storage.readFile("/wake_timing.txt") : String();
+  if (content.length() > 16000) content = content.substring(content.length() - 8000);
+  content += text.c_str();
+  Storage.writeFile("/wake_timing.txt", content);
+  wakeTimingCount = 0;
+}
+
 // CrossInk: set while a midnight timer wake redraws the sleep screen.
 static bool midnightRedrawInProgress = false;
 
@@ -1057,21 +1126,6 @@ bool shouldClearX4WakeGhosting() {
 // been released during boot. The write is skipped when the value is unchanged.
 constexpr char WAKE_NVS_NAMESPACE[] = "crosspoint";
 constexpr char WAKE_SHORT_PRESS_KEY[] = "wakeShortPr";
-constexpr char WAKE_HOLD_KEY[] = "wakeHoldCh";
-
-uint16_t readWakeHoldMsFromNvs() {
-#ifdef SIMULATOR
-  return CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS;
-#else
-  nvs_handle_t handle;
-  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK)
-    return CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS;
-  uint8_t value = CrossPointSettings::POWER_HOLD_400;
-  const esp_err_t result = nvs_get_u8(handle, WAKE_HOLD_KEY, &value);
-  nvs_close(handle);
-  return CrossPointSettings::powerHoldMs(result == ESP_OK ? value : CrossPointSettings::POWER_HOLD_400);
-#endif
-}
 
 bool readWakeShortPressFromNvs() {
 #ifdef SIMULATOR
@@ -1093,17 +1147,10 @@ void mirrorWakeShortPressToNvs() {
   if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
   uint8_t current = 0;
   const bool hasCurrent = nvs_get_u8(handle, WAKE_SHORT_PRESS_KEY, &current) == ESP_OK;
-  bool dirty = false;
   if (!hasCurrent || current != expected) {
     nvs_set_u8(handle, WAKE_SHORT_PRESS_KEY, expected);
-    dirty = true;
+    nvs_commit(handle);
   }
-  uint8_t hold = 0;
-  if (nvs_get_u8(handle, WAKE_HOLD_KEY, &hold) != ESP_OK || hold != SETTINGS.powerButtonHoldTime) {
-    nvs_set_u8(handle, WAKE_HOLD_KEY, SETTINGS.powerButtonHoldTime);
-    dirty = true;
-  }
-  if (dirty) nvs_commit(handle);
   nvs_close(handle);
 #endif
 }
@@ -1223,6 +1270,10 @@ void setupDisplayAndFonts(const bool seamless, const bool loadReaderResources, c
 }
 
 void setup() {
+  bootSetupStartMs = static_cast<uint16_t>(millis());
+#ifndef SIMULATOR
+  bootSetupStartCycles = esp_cpu_get_cycle_count();
+#endif
 #ifdef SIMULATOR
   SimulatorLifecycle::restoreSilentRebootToken(silentRebootMagic, silentRebootTarget, silentRebootPayload);
 #endif
@@ -1300,10 +1351,12 @@ void setup() {
 #ifndef SIMULATOR
   const bool shortPressWakes = readWakeShortPressFromNvs();
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton &&
-      !gpio.verifyPowerButtonWakeup(shortPressWakes, readWakeHoldMsFromNvs())) {
+      !gpio.verifyPowerButtonWakeup(shortPressWakes, CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS)) {
     LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
+    recordWakeTiming(static_cast<uint8_t>(wakeupReason));
     powerManager.startDeepSleep(gpio);
   }
+  if (wakeupReason == HalGPIO::WakeupReason::PowerButton) recordWakeTiming(static_cast<uint8_t>(wakeupReason));
 #endif
 
 #ifndef SIMULATOR
@@ -1646,6 +1699,7 @@ void setup() {
     gpio.update();
   }
 
+  flushWakeTiming(millis());
   allowSleepAt = millis() + 2000;
 }
 

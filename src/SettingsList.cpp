@@ -212,10 +212,6 @@ const std::vector<SettingInfo>& getBaseSettingsList() {
                              ShortcutOptionCatalog::PowerButton));
     add(buildShortcutSetting(StrId::STR_LONG_PRESS_ACTION, &CrossPointSettings::longPwrBtn, "longPwrBtn",
                              ShortcutOptionCatalog::PowerButton));
-    add(SettingInfo::Enum(
-        StrId::STR_POWER_HOLD_TIME, &CrossPointSettings::powerButtonHoldTime,
-        {StrId::STR_HOLD_150, StrId::STR_HOLD_200, StrId::STR_HOLD_250, StrId::STR_HOLD_300, StrId::STR_HOLD_400},
-        "powerButtonHoldTime", StrId::STR_CAT_CONTROLS));
     add(buildShortcutSetting(StrId::STR_POWER_BUTTON_CHORD, &CrossPointSettings::powerChordAction, "powerChordAction",
                              ShortcutOptionCatalog::ButtonChord));
     add(buildShortcutSetting(StrId::STR_SIDE_BUTTON_CHORD, &CrossPointSettings::sideButtonChordAction,

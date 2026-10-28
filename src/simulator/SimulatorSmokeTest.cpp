@@ -564,18 +564,6 @@ class SimulatorSmokeTest {
 
   static void verifyStreakCheck() {
     {
-      const uint8_t savedHold = SETTINGS.powerButtonHoldTime;
-      const uint8_t savedShort = SETTINGS.shortPwrBtn;
-      SETTINGS.shortPwrBtn = CrossPointSettings::FORCE_REFRESH;
-      SETTINGS.powerButtonHoldTime = CrossPointSettings::POWER_HOLD_200;
-      if (SETTINGS.getPowerButtonLongPressDuration() != 200 || SETTINGS.getPowerButtonWakeDuration() != 200)
-        fail("Power hold time setting is not applied");
-      SETTINGS.powerButtonHoldTime = 99;
-      if (SETTINGS.getPowerButtonLongPressDuration() != 400)
-        fail("Invalid power hold time does not fall back to 0.4 s");
-      SETTINGS.powerButtonHoldTime = savedHold;
-      SETTINGS.shortPwrBtn = savedShort;
-
       // Midnight redraw is armed only when the sleep screen drew the check.
       MidnightWake::beginSleepScreen();
       if (MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake armed without a streak check");
@@ -590,9 +578,7 @@ class SimulatorSmokeTest {
       };
       if (!hasKey(buildDisplaySleepSettingsList(getSettingsList()), "sleepStreakMidnightRefresh"))
         fail("Midnight streak refresh is missing from the sleep screen menu");
-      if (!hasKey(buildControlsPowerSettingsList(getSettingsList()), "powerButtonHoldTime"))
-        fail("Power hold time is missing from the power button menu");
-      LOG_INF("SMOKE", "Streak: hold time and midnight wake arming passed");
+      LOG_INF("SMOKE", "Streak: midnight wake arming passed");
     }
     ReadingStatsDateTime now;
     if (!getCurrentLocalReadingStatsDateTime(now)) fail("Streak check needs the simulated RTC (simulator-X3)");
@@ -2523,7 +2509,7 @@ class SimulatorSmokeTest {
         {
           RenderLock lock;
           auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
-          settings->simulatorOpenSubmenu(2, SettingAction::ControlsPowerButton, StrId::STR_POWER_HOLD_TIME);
+          settings->simulatorOpenSubmenu(2, SettingAction::ControlsPowerButton, StrId::STR_LONG_PRESS_ACTION);
         }
         queueStep("New settings: power", SmokeStep::NewSettingsPowerShown, 4);
         break;

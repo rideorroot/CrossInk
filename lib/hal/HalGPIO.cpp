@@ -299,9 +299,12 @@ bool HalGPIO::hasEdgeSideButtons() const {
 }
 
 bool HalGPIO::verifyPowerButtonWakeup(const bool shortPressWakes, const uint16_t longHoldMs) {
+  wakeCheckStartMs = millis();
+  wakeCheckResult = WAKE_CHECK_SKIPPED;
   // M5Paper v1.1 reaches setup after a normal wheel click has already been
   // released. Its hardware pull-ups make this ghost-wake debounce unnecessary.
   if (BoardConfig::isPaperMono() || BoardConfig::isM5PaperV11() || BoardConfig::ACTIVE.input.power < 0) {
+    wakeCheckEndMs = millis();
     return true;
   }
 
@@ -313,8 +316,16 @@ bool HalGPIO::verifyPowerButtonWakeup(const bool shortPressWakes, const uint16_t
     delay(1);
     inputMgr.update();
   }
-  if (shortPressWakes) return true;
-  if (!heldAtFirstSample || !inputMgr.isPowerButtonPhysicallyPressed()) return false;
+  if (shortPressWakes) {
+    wakeCheckResult = WAKE_CHECK_SHORT_OK;
+    wakeCheckEndMs = millis();
+    return true;
+  }
+  if (!heldAtFirstSample || !inputMgr.isPowerButtonPhysicallyPressed()) {
+    wakeCheckResult = WAKE_CHECK_RELEASED_BEFORE;
+    wakeCheckEndMs = millis();
+    return false;
+  }
 
   // Deep sleep wakes as soon as the GPIO changes. Keep the panel and SD card
   // asleep until the held press qualifies as a long Power gesture. millis()
@@ -322,8 +333,14 @@ bool HalGPIO::verifyPowerButtonWakeup(const bool shortPressWakes, const uint16_t
   while (millis() < longHoldMs) {
     delay(1);
     inputMgr.update();
-    if (!inputMgr.isPowerButtonPhysicallyPressed()) return false;
+    if (!inputMgr.isPowerButtonPhysicallyPressed()) {
+      wakeCheckResult = WAKE_CHECK_RELEASED_DURING;
+      wakeCheckEndMs = millis();
+      return false;
+    }
   }
+  wakeCheckResult = WAKE_CHECK_OK;
+  wakeCheckEndMs = millis();
   return true;
 }
 
