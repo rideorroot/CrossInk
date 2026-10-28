@@ -1169,8 +1169,11 @@ void wakeDiagBumpBootCounter() {
   if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
   uint32_t boots = 0;
   nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
-  nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, boots + 1);
-  nvs_commit(handle);
+  const esp_err_t setErr = nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, boots + 1);
+  const esp_err_t commitErr = nvs_commit(handle);
+  if (setErr != ESP_OK || commitErr != ESP_OK) {
+    LOG_ERR("WAKEDIAG", "boot counter write failed: %d/%d", static_cast<int>(setErr), static_cast<int>(commitErr));
+  }
   nvs_close(handle);
 #endif
 }
@@ -1199,9 +1202,19 @@ std::string wakeDiagTakeReport() {
   std::string out;
 #ifndef SIMULATOR
   nvs_handle_t handle;
-  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return out;
+  const esp_err_t openErr = nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+  if (openErr != ESP_OK) {
+    char err[96];
+    snprintf(err, sizeof(err), "  diag v4: nvs_open failed (%d)\n", static_cast<int>(openErr));
+    return err;
+  }
   uint32_t boots = 0;
-  nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
+  const esp_err_t bootsErr = nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
+  {
+    char head[96];
+    snprintf(head, sizeof(head), "  diag v4: boots key %s\n", bootsErr == ESP_OK ? "ok" : "missing");
+    out += head;
+  }
   WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
   size_t size = sizeof(records);
   if (nvs_get_blob(handle, WAKE_DIAG_REJECTS_KEY, records, &size) != ESP_OK) size = 0;
