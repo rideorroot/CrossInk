@@ -141,19 +141,6 @@ class HalGPIO {
   // Returns true if verification succeeded, false if device should return to sleep.
   // Should only be called when wakeup reason is PowerButton.
   bool verifyPowerButtonWakeup(bool shortPressWakes, uint16_t longHoldMs);
-  // CrossInk wake timing diagnostics (filled by verifyPowerButtonWakeup).
-  enum WakeCheck : uint8_t {
-    WAKE_CHECK_SKIPPED,
-    WAKE_CHECK_RELEASED_BEFORE,
-    WAKE_CHECK_RELEASED_DURING,
-    WAKE_CHECK_OK,
-    WAKE_CHECK_SHORT_OK
-  };
-  uint32_t wakeCheckStartMs = 0;
-  uint32_t wakeCheckEndMs = 0;
-  uint8_t wakeCheckResult = WAKE_CHECK_SKIPPED;
-  bool wakeCheckHeldAtStart = false;
-  uint16_t wakeCheckGlitches = 0;
 
   // Check if USB is connected
   bool isUsbConnected() const;

@@ -67,8 +67,6 @@ enum : int {
 inline esp_reset_reason_t esp_reset_reason() { return ESP_RST_UNKNOWN; }
 inline esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_WAKEUP_UNDEFINED; }
 #else
-#include <esp_cpu.h>
-#include <esp_rtc_time.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
 #endif
@@ -121,7 +119,6 @@ inline esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_
 #include "util/Dictionary.h"
 #include "util/DictionaryRegistry.h"
 #include "util/FrontlightSchedule.h"
-#include "util/MidnightWake.h"
 #include "util/ScreenshotUtil.h"
 #include "util/SleepWakePolicy.h"
 
@@ -376,87 +373,6 @@ using BootResume = SleepWakePolicy::Resume;
 // device back up against the user's sleep gesture. Never cleared:
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
-// CrossInk wake-timing diagnostics: each Power wake attempt is recorded in RTC
-// memory (rejected attempts sleep again before the SD card is up) and written
-// to /wake_timing.txt on the next successful boot.
-struct WakeTimingEntry {
-  uint16_t setupStartMs;
-  uint16_t checkStartMs;
-  uint16_t checkEndMs;
-  uint8_t result;
-  uint8_t reason;
-  uint32_t setupStartCycles;
-  uint16_t glitches;
-};
-constexpr uint32_t WAKE_TIMING_MAGIC = 0x574B544D;
-constexpr uint8_t WAKE_TIMING_SLOTS = 12;
-#ifndef SIMULATOR
-RTC_DATA_ATTR static uint32_t wakeTimingMagic = 0;
-RTC_DATA_ATTR static uint8_t wakeTimingCount = 0;
-RTC_DATA_ATTR static WakeTimingEntry wakeTimingEntries[WAKE_TIMING_SLOTS];
-#else
-static uint32_t wakeTimingMagic = 0;
-static uint8_t wakeTimingCount = 0;
-static WakeTimingEntry wakeTimingEntries[WAKE_TIMING_SLOTS];
-#endif
-static uint16_t bootSetupStartMs = 0;
-static uint32_t bootSetupStartCycles = 0;
-static int bootResetReason = 0;
-static int bootWakeCause = 0;
-static uint64_t bootRtcUs = 0;
-
-void recordWakeTiming(const uint8_t reason) {
-#ifdef SIMULATOR
-  (void)reason;
-#else
-  if (wakeTimingMagic != WAKE_TIMING_MAGIC) {
-    wakeTimingMagic = WAKE_TIMING_MAGIC;
-    wakeTimingCount = 0;
-  }
-  if (wakeTimingCount >= WAKE_TIMING_SLOTS) return;
-  wakeTimingEntries[wakeTimingCount++] = {bootSetupStartMs,
-                                          static_cast<uint16_t>(gpio.wakeCheckStartMs),
-                                          static_cast<uint16_t>(gpio.wakeCheckEndMs),
-                                          gpio.wakeCheckResult,
-                                          reason,
-                                          bootSetupStartCycles,
-                                          gpio.wakeCheckGlitches};
-#endif
-}
-
-std::string wakeDiagTakeReport();
-
-void flushWakeTiming(const uint32_t setupEndMs) {
-  if (wakeTimingMagic != WAKE_TIMING_MAGIC || wakeTimingCount == 0) return;
-  static const char* const results[] = {"skipped", "released-before-check", "released-during-check", "ok", "short-ok"};
-  std::string text;
-  char line[200];
-  for (uint8_t i = 0; i < wakeTimingCount; ++i) {
-    const auto& e = wakeTimingEntries[i];
-    const bool last = i + 1 == wakeTimingCount;
-    snprintf(line, sizeof(line),
-             "attempt %u: reason=%u setupStart=%ums cycles=%lu check=%u-%ums glitches=%u result=%s%s\n", i + 1,
-             e.reason, e.setupStartMs, static_cast<unsigned long>(e.setupStartCycles), e.checkStartMs, e.checkEndMs,
-             e.glitches, e.result < 5 ? results[e.result] : "?", last ? "" : " (slept again)");
-    text += line;
-    if (last) {
-      snprintf(line, sizeof(line), "  boot finished at %lums reset=%d wake=%d rtcSincePowerOn=%llums\n",
-               static_cast<unsigned long>(setupEndMs), bootResetReason, bootWakeCause,
-               static_cast<unsigned long long>(bootRtcUs / 1000));
-      text += line;
-    }
-  }
-  text += wakeDiagTakeReport();
-  text += "--\n";
-  String content = Storage.exists("/wake_timing.txt") ? Storage.readFile("/wake_timing.txt") : String();
-  if (content.length() > 16000) content = content.substring(content.length() - 8000);
-  content += text.c_str();
-  Storage.writeFile("/wake_timing.txt", content);
-  wakeTimingCount = 0;
-}
-
-// CrossInk: set while a midnight timer wake redraws the sleep screen.
-static bool midnightRedrawInProgress = false;
 
 static void restartWithSilentToken() {
   // Capture the live state for every destination without changing wake preferences.
@@ -1138,6 +1054,22 @@ bool shouldClearX4WakeGhosting() {
 // been released during boot. The write is skipped when the value is unchanged.
 constexpr char WAKE_NVS_NAMESPACE[] = "crosspoint";
 constexpr char WAKE_SHORT_PRESS_KEY[] = "wakeShortPr";
+constexpr char WAKE_HOLD_KEY[] = "wakeHoldT";
+
+// CrossInk: the configurable wake hold, mirrored like the short-press flag.
+uint16_t readWakeHoldMsFromNvs() {
+#ifdef SIMULATOR
+  return CrossPointSettings::wakeHoldMsFor(1);
+#else
+  uint8_t tenths = 1;
+  nvs_handle_t handle;
+  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READONLY, &handle) == ESP_OK) {
+    nvs_get_u8(handle, WAKE_HOLD_KEY, &tenths);
+    nvs_close(handle);
+  }
+  return CrossPointSettings::wakeHoldMsFor(tenths);
+#endif
+}
 
 bool readWakeShortPressFromNvs() {
 #ifdef SIMULATOR
@@ -1152,96 +1084,6 @@ bool readWakeShortPressFromNvs() {
 #endif
 }
 
-// CrossInk wake diagnostics that survive the X3 switching itself off: a boot
-// counter bumped at every setup() start and the details of the last few
-// rejected wake checks, kept in NVS (flash) instead of RTC memory.
-constexpr char WAKE_DIAG_BOOTS_KEY[] = "wdBoots";
-constexpr char WAKE_DIAG_REJECTS_KEY[] = "wdRejects";
-struct WakeRejectRecord {
-  uint16_t checkStartMs;
-  uint16_t checkEndMs;
-  uint8_t result;
-  uint8_t heldAtStart;
-  uint16_t glitches;
-};
-constexpr size_t WAKE_DIAG_MAX_REJECTS = 8;
-
-void wakeDiagBumpBootCounter() {
-#ifndef SIMULATOR
-  nvs_handle_t handle;
-  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
-  uint32_t boots = 0;
-  nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
-  const esp_err_t setErr = nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, boots + 1);
-  const esp_err_t commitErr = nvs_commit(handle);
-  if (setErr != ESP_OK || commitErr != ESP_OK) {
-    LOG_ERR("WAKEDIAG", "boot counter write failed: %d/%d", static_cast<int>(setErr), static_cast<int>(commitErr));
-  }
-  nvs_close(handle);
-#endif
-}
-
-void wakeDiagRecordReject(const uint16_t startMs, const uint16_t endMs, const uint8_t result, const bool heldAtStart,
-                          const uint16_t glitches) {
-#ifndef SIMULATOR
-  nvs_handle_t handle;
-  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
-  WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
-  size_t size = sizeof(records);
-  if (nvs_get_blob(handle, WAKE_DIAG_REJECTS_KEY, records, &size) != ESP_OK) size = 0;
-  size_t count = size / sizeof(WakeRejectRecord);
-  if (count >= WAKE_DIAG_MAX_REJECTS) {
-    for (size_t i = 1; i < WAKE_DIAG_MAX_REJECTS; ++i) records[i - 1] = records[i];
-    count = WAKE_DIAG_MAX_REJECTS - 1;
-  }
-  records[count++] = {startMs, endMs, result, static_cast<uint8_t>(heldAtStart ? 1 : 0), glitches};
-  nvs_set_blob(handle, WAKE_DIAG_REJECTS_KEY, records, count * sizeof(WakeRejectRecord));
-  nvs_commit(handle);
-  nvs_close(handle);
-#endif
-}
-
-// Returns a report of boots and rejects since the last successful boot and clears them.
-std::string wakeDiagTakeReport() {
-  std::string out;
-#ifndef SIMULATOR
-  nvs_handle_t handle;
-  const esp_err_t openErr = nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle);
-  if (openErr != ESP_OK) {
-    char err[96];
-    snprintf(err, sizeof(err), "  diag v6: nvs_open failed (%d)\n", static_cast<int>(openErr));
-    return err;
-  }
-  uint32_t boots = 0;
-  const esp_err_t bootsErr = nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
-  {
-    char head[96];
-    snprintf(head, sizeof(head), "  diag v6: boots key %s\n", bootsErr == ESP_OK ? "ok" : "missing");
-    out += head;
-  }
-  WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
-  size_t size = sizeof(records);
-  if (nvs_get_blob(handle, WAKE_DIAG_REJECTS_KEY, records, &size) != ESP_OK) size = 0;
-  const size_t count = size / sizeof(WakeRejectRecord);
-  static const char* const results[] = {"skipped", "released-before-check", "released-during-check", "ok", "short-ok"};
-  char line[160];
-  snprintf(line, sizeof(line), "  firmware starts since last report: %lu (this one included), rejected: %u\n",
-           static_cast<unsigned long>(boots), static_cast<unsigned>(count));
-  out += line;
-  for (size_t i = 0; i < count; ++i) {
-    snprintf(line, sizeof(line), "  rejected %u: check=%u-%ums result=%s heldAtStart=%u glitches=%u\n",
-             static_cast<unsigned>(i + 1), records[i].checkStartMs, records[i].checkEndMs,
-             records[i].result < 5 ? results[records[i].result] : "?", records[i].heldAtStart, records[i].glitches);
-    out += line;
-  }
-  nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, 0);
-  nvs_erase_key(handle, WAKE_DIAG_REJECTS_KEY);
-  nvs_commit(handle);
-  nvs_close(handle);
-#endif
-  return out;
-}
-
 void mirrorWakeShortPressToNvs() {
 #ifndef SIMULATOR
   const uint8_t expected = SETTINGS.shortPowerPressWakes() ? 1 : 0;
@@ -1249,10 +1091,17 @@ void mirrorWakeShortPressToNvs() {
   if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
   uint8_t current = 0;
   const bool hasCurrent = nvs_get_u8(handle, WAKE_SHORT_PRESS_KEY, &current) == ESP_OK;
+  bool dirty = false;
   if (!hasCurrent || current != expected) {
     nvs_set_u8(handle, WAKE_SHORT_PRESS_KEY, expected);
-    nvs_commit(handle);
+    dirty = true;
   }
+  uint8_t hold = 0;
+  if (nvs_get_u8(handle, WAKE_HOLD_KEY, &hold) != ESP_OK || hold != SETTINGS.wakeHoldTenths) {
+    nvs_set_u8(handle, WAKE_HOLD_KEY, SETTINGS.wakeHoldTenths);
+    dirty = true;
+  }
+  if (dirty) nvs_commit(handle);
   nvs_close(handle);
 #endif
 }
@@ -1260,8 +1109,7 @@ void mirrorWakeShortPressToNvs() {
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout) {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
-  // A midnight redraw boots without an activity; keep the original value.
-  if (!midnightRedrawInProgress) APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
+  APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
 
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -1274,9 +1122,7 @@ void enterDeepSleep(bool fromTimeout) {
   // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
   deepSleepInProgress = true;
-  MidnightWake::beginSleepScreen();
   activityManager.goToSleep(fromTimeout);
-  if (!isQuickResumeSleep) MidnightWake::armAfterSleepScreen(fromTimeout);
   // Reader exit may already have saved this state. Save after the sleep screen
   // appears, skipping an unchanged snapshot while still retrying failed saves.
   APP_STATE.saveToFile();
@@ -1372,13 +1218,6 @@ void setupDisplayAndFonts(const bool seamless, const bool loadReaderResources, c
 }
 
 void setup() {
-  bootSetupStartMs = static_cast<uint16_t>(millis());
-#ifndef SIMULATOR
-  bootSetupStartCycles = esp_cpu_get_cycle_count();
-  bootRtcUs = esp_rtc_get_time_us();
-  bootResetReason = static_cast<int>(esp_reset_reason());
-  bootWakeCause = static_cast<int>(esp_sleep_get_wakeup_cause());
-#endif
 #ifdef SIMULATOR
   SimulatorLifecycle::restoreSilentRebootToken(silentRebootMagic, silentRebootTarget, silentRebootPayload);
 #endif
@@ -1447,15 +1286,12 @@ void setup() {
 
   gpio.begin();
 #if !defined(SIMULATOR) && FREEINK_DEVICE_X3
-  // CrossInk: on the X3 the SD enable (GPIO13) also keeps the whole board
-  // powered; sleep drives it LOW and the board switches off. Assert it before
-  // the long-press wake check, as the factory firmware does, so the press only
-  // has to last for the check itself instead of until the SD card starts.
-  // A rejected wake still goes back to sleep through startDeepSleep(), which
-  // drives the pin LOW again.
+  // CrossInk: on the X3 the SD enable (GPIO13) also keeps the board powered
+  // (sleep drives it LOW and the board switches off). Assert it before the wake
+  // check, as the factory firmware does. A rejected wake still sleeps again via
+  // startDeepSleep(), which drives the pin LOW.
   if (gpio.deviceIsX3() && BoardConfig::ACTIVE.sd.powerEnable >= 0) {
-    const auto pin = static_cast<gpio_num_t>(BoardConfig::ACTIVE.sd.powerEnable);
-    gpio_hold_dis(pin);
+    gpio_hold_dis(static_cast<gpio_num_t>(BoardConfig::ACTIVE.sd.powerEnable));
     pinMode(BoardConfig::ACTIVE.sd.powerEnable, OUTPUT);
     digitalWrite(BoardConfig::ACTIVE.sd.powerEnable, BoardConfig::ACTIVE.sd.powerActiveHigh ? HIGH : LOW);
   }
@@ -1468,23 +1304,13 @@ void setup() {
 
   const auto wakeupReason = gpio.getWakeupReason();
 #ifndef SIMULATOR
-  wakeDiagBumpBootCounter();
-  // CrossInk: the X3 power circuit only switches the board on after the button
-  // has been held for a moment, so it already rejects accidental taps. A second
-  // firmware hold check on top made waking need ~1.5 s, so accept the wake as
-  // soon as the board is powered, whatever the short-press action is.
-  const bool shortPressWakes = readWakeShortPressFromNvs() || gpio.deviceIsX3();
+  const uint16_t wakeHoldMs = readWakeHoldMsFromNvs();
+  const bool shortPressWakes = readWakeShortPressFromNvs() || wakeHoldMs == 0;
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton &&
-      !gpio.verifyPowerButtonWakeup(shortPressWakes, CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS)) {
+      !gpio.verifyPowerButtonWakeup(shortPressWakes, wakeHoldMs)) {
     LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
-    recordWakeTiming(static_cast<uint8_t>(wakeupReason));
-#ifndef SIMULATOR
-    wakeDiagRecordReject(static_cast<uint16_t>(gpio.wakeCheckStartMs), static_cast<uint16_t>(gpio.wakeCheckEndMs),
-                         gpio.wakeCheckResult, gpio.wakeCheckHeldAtStart, gpio.wakeCheckGlitches);
-#endif
     powerManager.startDeepSleep(gpio);
   }
-  if (wakeupReason == HalGPIO::WakeupReason::PowerButton) recordWakeTiming(static_cast<uint8_t>(wakeupReason));
 #endif
 
 #ifndef SIMULATOR
@@ -1560,15 +1386,6 @@ void setup() {
   BatteryDiagnosticLog::record(BatteryDiagnosticLog::Event::Wake, BoardConfig::ACTIVE.name,
                                wakeupRouteName(wakeupReason));
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
-  // CrossInk: midnight timer wake for the streak check on the sleep screen.
-  const auto midnightAction = MidnightWake::onBoot();
-  if (midnightAction == MidnightWake::BootAction::SleepAgain) {
-    // Woke early: the panel still shows the right frame, so skip the display.
-    Storage.shutdown();
-    putTiltSensorToSleepForDeepSleep();
-    MidnightWake::armRemaining();
-    powerManager.startDeepSleep(gpio);
-  }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   // Normal boot store deferral adapted from Sichroteph/YACP commit
   // 20af8aee8d3e1d560456753b08d1f52e5488621f (MIT). Accessors load these
@@ -1605,15 +1422,7 @@ void setup() {
     }
   }
   LOG_DBG("LIGHT", "Frontlight boot state: %s (silent=%d)", restoreLightOn ? "on" : "off", isSilentReboot ? 1 : 0);
-  if (midnightAction == MidnightWake::BootAction::Redraw) restoreLightOn = false;
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, restoreLightOn);
-
-  if (midnightAction == MidnightWake::BootAction::Redraw) {
-    // Redraw the sleep screen (now without today's check) and sleep again.
-    setupDisplayAndFonts(false, true, true);
-    midnightRedrawInProgress = true;
-    enterDeepSleep(MidnightWake::redrawFromTimeout());
-  }
 
   if (recoveryFirmwareMode) {
     LOG_INF("MAIN", "Recovery firmware mode (%s + POWER held at boot)",
@@ -1827,7 +1636,6 @@ void setup() {
     gpio.update();
   }
 
-  flushWakeTiming(millis());
   allowSleepAt = millis() + 2000;
 }
 

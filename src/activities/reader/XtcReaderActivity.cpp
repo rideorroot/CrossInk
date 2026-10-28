@@ -33,6 +33,7 @@
 #include "components/themes/lyra/LyraCarouselTheme.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
+#include "util/LastRead.h"
 
 namespace {
 constexpr unsigned long MIN_READING_STATS_PAGE_MS = 2000UL;
@@ -738,6 +739,7 @@ void XtcReaderActivity::recordForwardPageTurn(const uint32_t seconds, const bool
     stats.totalPagesTurned++;
     globalStats.totalPagesTurned++;
   }
+  LastRead::markNow();
 }
 
 bool XtcReaderActivity::formatTimeLeftLabel(char* buf, const size_t len, const uint32_t pageToRender,

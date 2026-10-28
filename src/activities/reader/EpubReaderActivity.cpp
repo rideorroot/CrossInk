@@ -71,6 +71,7 @@
 #include "clippings/ClippingTextMatcher.h"
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
+#include "util/LastRead.h"
 #if CROSSINK_APP_CAP_TOUCH
 #include "components/TouchHeaderBackButton.h"
 #endif
@@ -6004,6 +6005,7 @@ void EpubReaderActivity::pageTurn(bool isForwardTurn, const char* source) {
         stats.totalPagesTurned++;
         globalStats.totalPagesTurned++;
       }
+      LastRead::markNow();
     }
   } else {
     recordCurrentPageReadingTime(source);

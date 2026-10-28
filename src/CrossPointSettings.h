@@ -654,8 +654,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t hideFileExtension = 0;
   // Show "finished/total" book counts next to folders in the file browser (0 = off, 1 = on)
   uint8_t fileBrowserFolderReadCount = 1;
-  // CrossInk: wake shortly after midnight to redraw a sleep screen that shows today's streak check (0 = off, 1 = on)
-  uint8_t sleepStreakMidnightRefresh = 1;
+  // CrossInk: how long Power must be held to wake, in tenths of a second (0-5).
+  // Only used while the short press does not wake. The X3 power circuit itself
+  // already needs a short hold before the board switches on.
+  uint8_t wakeHoldTenths = 1;
   // File browser display row style (0 = one-line theme list, 1 = two-line compact display)
   uint8_t fileBrowserDisplay = FILE_BROWSER_DISPLAY_1_LINE;
   // File browser ordering (FILE_BROWSER_SORT).
@@ -741,6 +743,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint16_t getPowerButtonWakeDuration() const {
     return shortPowerPressWakes() ? POWER_BUTTON_WAKE_SHORT_MS : POWER_BUTTON_WAKE_LONG_MS;
   }
+
+  static constexpr uint8_t MAX_WAKE_HOLD_TENTHS = 5;
+  static constexpr uint16_t wakeHoldMsFor(const uint8_t tenths) {
+    return static_cast<uint16_t>((tenths > MAX_WAKE_HOLD_TENTHS ? 1 : tenths) * 100);
+  }
+  uint16_t getWakeHoldMs() const { return wakeHoldMsFor(wakeHoldTenths); }
 
   bool shortPowerPressWakes() const { return shortPwrBtn == SLEEP || shortPwrBtn == WAKE_ONLY; }
 

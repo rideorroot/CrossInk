@@ -54,7 +54,6 @@
 #include "activities/settings/StorageActivity.h"
 #include "activities/util/FrontlightPanelActivity.h"
 #include "components/HeaderDate.h"
-#include "components/StreakCheck.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
 #include "components/themes/dashboard/DashboardTheme.h"
@@ -64,7 +63,7 @@
 #include "util/ButtonShortcutController.h"
 #include "util/FolderOps.h"
 #include "util/FolderReadCounts.h"
-#include "util/MidnightWake.h"
+#include "util/LastRead.h"
 
 extern ActivityManager activityManager;
 extern GfxRenderer renderer;
@@ -563,56 +562,53 @@ class SimulatorSmokeTest {
   }
 
   static void verifyStreakCheck() {
-    {
-      // Midnight redraw is armed only when the sleep screen drew the check.
-      MidnightWake::beginSleepScreen();
-      if (MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake armed without a streak check");
-      MidnightWake::beginSleepScreen();
-      MidnightWake::noteStreakCheckDrawn();
-      if (!MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake not armed after a streak check");
-      SETTINGS.sleepStreakMidnightRefresh = 0;
-      if (MidnightWake::armAfterSleepScreen(false)) fail("Midnight wake armed while switched off");
-      SETTINGS.sleepStreakMidnightRefresh = 1;
-      const auto hasKey = [](const std::vector<SettingInfo>& list, const char* key) {
-        return std::any_of(list.begin(), list.end(), [key](const SettingInfo& s) { return settingKeyIs(s, key); });
-      };
-      if (!hasKey(buildDisplaySleepSettingsList(getSettingsList()), "sleepStreakMidnightRefresh"))
-        fail("Midnight streak refresh is missing from the sleep screen menu");
-      LOG_INF("SMOKE", "Streak: midnight wake arming passed");
-    }
-    ReadingStatsDateTime now;
-    if (!getCurrentLocalReadingStatsDateTime(now)) fail("Streak check needs the simulated RTC (simulator-X3)");
-    const uint32_t today = readingStatsDayIndex(now.date);
+    // Wake hold setting sits in the power button menu.
+    const auto hasKey = [](const std::vector<SettingInfo>& list, const char* key) {
+      return std::any_of(list.begin(), list.end(), [key](const SettingInfo& s) { return settingKeyIs(s, key); });
+    };
+    if (!hasKey(buildControlsPowerSettingsList(getSettingsList()), "wakeHoldTenths"))
+      fail("Wake hold time is missing from the power button menu");
+    if (CrossPointSettings::wakeHoldMsFor(0) != 0 || CrossPointSettings::wakeHoldMsFor(3) != 300 ||
+        CrossPointSettings::wakeHoldMsFor(5) != 500 || CrossPointSettings::wakeHoldMsFor(9) != 100)
+      fail("Wake hold time mapping is wrong");
 
+    // Last read stamp: formatting and live capture from the simulated RTC.
+    const uint32_t savedStamp = APP_STATE.lastReadStamp;
+    char text[48];
+    APP_STATE.lastReadStamp = 0;
+    if (LastRead::format(text, sizeof(text))) fail("Last read shown without a stamp");
+    APP_STATE.lastReadStamp = LastRead::pack(2026, 10, 28, 11, 10);
+    if (!LastRead::format(text, sizeof(text)) || std::string(text) != "Last read 28.10. 11:10")
+      fail("Last read format: '%s'", text);
+    LastRead::markNow();
+    if (!LastRead::format(text, sizeof(text))) fail("Last read not captured from the clock");
+    LOG_INF("SMOKE", "Last read: %s", text);
+    APP_STATE.lastReadStamp = LastRead::pack(2026, 10, 28, 11, 10);
+
+    ReadingStatsDateTime now;
+    if (!getCurrentLocalReadingStatsDateTime(now)) fail("Last read needs the simulated RTC (simulator-X3)");
+    const uint32_t today = readingStatsDayIndex(now.date);
     GlobalReadingStats readToday;
     readToday.totalReadingSeconds = 3 * 3600;
     readToday.timeOfDaySeconds[static_cast<size_t>(ReadingTimeBucket::Evening)] = 3 * 3600;
     for (uint32_t d = today - 4; d <= today; ++d) {
       markReadingHistoryDay(readToday.readingHistoryAnchorDay, readToday.readingHistoryBits, d);
     }
-    GlobalReadingStats readYesterday = readToday;
-    readYesterday.readingHistoryAnchorDay = 0;
-    readYesterday.readingHistoryBits = {};
-    for (uint32_t d = today - 4; d < today; ++d) {
-      markReadingHistoryDay(readYesterday.readingHistoryAnchorDay, readYesterday.readingHistoryBits, d);
-    }
-    if (!StreakCheck::extendedToday(readToday) || StreakCheck::extendedToday(readYesterday))
-      fail("Streak 'read today' detection mismatch");
-    if (readToday.currentReadingStreak(&now.date) != 5 || readYesterday.currentReadingStreak(&now.date) != 4)
-      fail("Unexpected streak lengths");
 
     RecentBook book{"/books/streak.epub", "Der Name der Rose", "Umberto Eco", ""};
     BookReadingStats bookStats;
-    RenderLock lock;
-    MinimalTheme minimal;
-    minimal.drawStatsSleepScreen(renderer, book, &bookStats, &readToday, 0.42f, false);
-    captureReadMarksScreen("k1-minimal-heute-gelesen");
-    minimal.drawStatsSleepScreen(renderer, book, &bookStats, &readYesterday, 0.42f, false);
-    captureReadMarksScreen("k2-minimal-noch-nicht");
-    DashboardTheme dashboard;
-    dashboard.drawSleepScreen(renderer, book, &bookStats, &readToday, 0.42f, "Erster Tag", false);
-    captureReadMarksScreen("k3-dashboard-heute-gelesen");
-    LOG_INF("SMOKE", "Streak check: detection and sleep screens rendered");
+    bookStats.totalReadingSeconds = 2 * 3600 + 15 * 60;
+    {
+      RenderLock lock;
+      MinimalTheme minimal;
+      minimal.drawStatsSleepScreen(renderer, book, &bookStats, &readToday, 42.0f, false);
+      captureReadMarksScreen("l1-minimal-last-read");
+      DashboardTheme dashboard;
+      dashboard.drawSleepScreen(renderer, book, &bookStats, &readToday, 42.0f, "Erster Tag", false);
+      captureReadMarksScreen("l2-dashboard-last-read");
+    }
+    APP_STATE.lastReadStamp = savedStamp;
+    LOG_INF("SMOKE", "Last read: settings and sleep screens rendered");
   }
 
   static void verifyEdgeMarginMigration() {
@@ -2495,7 +2491,7 @@ class SimulatorSmokeTest {
         {
           RenderLock lock;
           auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
-          settings->simulatorOpenSubmenu(0, SettingAction::DisplaySleepScreen, StrId::STR_STREAK_MIDNIGHT_REFRESH);
+          settings->simulatorOpenSubmenu(0, SettingAction::DisplaySleepScreen, StrId::STR_SLEEP_COVER_FILTER);
         }
         queueStep("New settings: sleep", SmokeStep::NewSettingsSleepShown, 4);
         break;
@@ -2509,7 +2505,7 @@ class SimulatorSmokeTest {
         {
           RenderLock lock;
           auto* settings = static_cast<SettingsActivity*>(activityManager.simulatorCurrentActivity());
-          settings->simulatorOpenSubmenu(2, SettingAction::ControlsPowerButton, StrId::STR_LONG_PRESS_ACTION);
+          settings->simulatorOpenSubmenu(2, SettingAction::ControlsPowerButton, StrId::STR_WAKE_HOLD_TIME);
         }
         queueStep("New settings: power", SmokeStep::NewSettingsPowerShown, 4);
         break;

@@ -23,7 +23,6 @@
 #include "activities/reader/BookStatsTracking.h"
 #include "activities/reader/GlobalReadingStats.h"
 #include "activities/reader/ReadingStatsUtils.h"
-#include "components/StreakCheck.h"
 #include "components/TouchRegistry.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -34,6 +33,7 @@
 #include "components/icons/night.h"
 #include "components/icons/streak.h"
 #include "fontIds.h"
+#include "util/LastRead.h"
 
 namespace {
 constexpr int kContentInsetX4 = 20;
@@ -447,10 +447,8 @@ void formatStreakStat(const GlobalReadingStats* globalStats, char* buf, const si
 }
 
 void drawIconLabel(const GfxRenderer& renderer, const uint8_t* icon, const int iconX, const int centerY,
-                   const char* label, const int maxTextW, const bool inverted = false,
-                   const bool trailingCheck = false) {
-  const int checkWidth = trailingCheck ? StreakCheck::trailingWidth() : 0;
-  const std::string visibleLabel = renderer.truncatedText(UI_10_FONT_ID, label, std::max(1, maxTextW - checkWidth));
+                   const char* label, const int maxTextW, const bool inverted = false) {
+  const std::string visibleLabel = renderer.truncatedText(UI_10_FONT_ID, label, std::max(1, maxTextW));
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
   if (inverted) {
     renderer.drawIconInverted(icon, iconX, centerY - kFooterIconSize / 2, kFooterIconSize, kFooterIconSize);
@@ -459,10 +457,6 @@ void drawIconLabel(const GfxRenderer& renderer, const uint8_t* icon, const int i
   }
   const int textX = iconX + kFooterIconSize + kFooterIconTextGap;
   renderer.drawText(UI_10_FONT_ID, textX, centerY - lineH / 2, visibleLabel.c_str(), !inverted);
-  if (trailingCheck) {
-    const int textW = renderer.getTextWidth(UI_10_FONT_ID, visibleLabel.c_str());
-    StreakCheck::draw(renderer, textX + textW + StreakCheck::GAP, centerY, !inverted);
-  }
 }
 
 void drawRightAlignedIconLabel(const GfxRenderer& renderer, const uint8_t* icon, const int rightX, const int centerY,
@@ -536,14 +530,28 @@ void drawFooterStats(const GfxRenderer& renderer, const Rect& coverRect, const G
   formatStreakStat(globalStats, streakBuf, sizeof(streakBuf));
 
   const int leftTextW = renderer.getScreenWidth() / 2 - inset - kFooterIconSize - kFooterIconTextGap;
-  drawIconLabel(renderer, StreakIcon, coverRect.x, centerY, streakBuf, leftTextW, inverted,
-                globalStats != nullptr && StreakCheck::extendedToday(*globalStats));
+  drawIconLabel(renderer, StreakIcon, coverRect.x, centerY, streakBuf, leftTextW, inverted);
 
   const char* readerLabel = readerTypeLabel(globalStats);
   const int rightX = renderer.getScreenWidth() - inset - (gpio.deviceIsX3() ? kPairInwardShiftX3 : 0);
   const int maxReaderTextW = std::max(1, renderer.getScreenWidth() / 2 - inset - kFooterIconSize - kFooterIconTextGap);
   drawRightAlignedIconLabel(renderer, readerTypeIcon(globalStats), rightX, centerY, readerLabel, maxReaderTextW,
                             inverted);
+}
+
+// CrossInk: "Last read 28.10. 11:10", left-aligned above the sleep-screen footer.
+void drawLastReadLine(const GfxRenderer& renderer, const Rect& coverRect, const bool black) {
+  char lastRead[48];
+  if (!LastRead::format(lastRead, sizeof(lastRead))) return;
+  const int inset = contentInset(renderer);
+  const int buttonHintReserve = gpio.hasTouch() ? 0 : DashboardMetrics::values.buttonHintsHeight;
+  const int footerY = renderer.getScreenHeight() - buttonHintReserve - kFooterBottomGap;
+  const int footerCenterY = std::max(coverRect.y + coverRect.height + 120, footerY);
+  const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
+  const int y = footerCenterY - kFooterIconSize / 2 - 14 - lineH;
+  const std::string text =
+      renderer.truncatedText(UI_10_FONT_ID, lastRead, std::max(1, renderer.getScreenWidth() - inset * 2));
+  renderer.drawText(UI_10_FONT_ID, coverRect.x, y, text.c_str(), black);
 }
 
 void drawBookText(const GfxRenderer& renderer, const Rect& coverRect, const RecentBook& book,
@@ -611,5 +619,8 @@ void DashboardTheme::drawSleepScreen(const GfxRenderer& renderer, const RecentBo
   drawBookCover(renderer, coverRect, book, inverted ? Color::White : Color::Black);
   drawDashboardStats(renderer, coverRect, stats, progressPercent, showBookStatsForPath(book.path), inverted);
   drawBookText(renderer, coverRect, book, currentChapterTitle, inverted);
-  if (SETTINGS.shouldTrackReadingStats()) drawFooterStats(renderer, coverRect, globalStats, !inverted);
+  if (SETTINGS.shouldTrackReadingStats()) {
+    drawFooterStats(renderer, coverRect, globalStats, !inverted);
+    drawLastReadLine(renderer, coverRect, inverted);
+  }
 }

@@ -299,63 +299,31 @@ bool HalGPIO::hasEdgeSideButtons() const {
 }
 
 bool HalGPIO::verifyPowerButtonWakeup(const bool shortPressWakes, const uint16_t longHoldMs) {
-  wakeCheckStartMs = millis();
-  wakeCheckResult = WAKE_CHECK_SKIPPED;
-  wakeCheckGlitches = 0;
   // M5Paper v1.1 reaches setup after a normal wheel click has already been
   // released. Its hardware pull-ups make this ghost-wake debounce unnecessary.
   if (BoardConfig::isPaperMono() || BoardConfig::isM5PaperV11() || BoardConfig::ACTIVE.input.power < 0) {
-    wakeCheckEndMs = millis();
     return true;
   }
 
   constexpr unsigned long POWER_WAKE_STABILITY_MS = 10;
-  // CrossInk: right after power-on the X3 Power line can read "released" for
-  // a few milliseconds while the button is still held. Only a release that
-  // lasts longer than this counts; a press must appear within the same window.
-  constexpr unsigned long POWER_WAKE_RELEASE_TOLERANCE_MS = 50;
   const bool heldAtFirstSample = inputMgr.isPowerButtonPhysicallyPressed();
-  wakeCheckHeldAtStart = heldAtFirstSample;
   const unsigned long sampleStart = millis();
   inputMgr.update();
   while (millis() - sampleStart < POWER_WAKE_STABILITY_MS || inputMgr.isDebouncePending()) {
     delay(1);
     inputMgr.update();
   }
-  if (shortPressWakes) {
-    wakeCheckResult = WAKE_CHECK_SHORT_OK;
-    wakeCheckEndMs = millis();
-    return true;
-  }
+  if (shortPressWakes) return true;
+  if (!heldAtFirstSample || !inputMgr.isPowerButtonPhysicallyPressed()) return false;
 
   // Deep sleep wakes as soon as the GPIO changes. Keep the panel and SD card
   // asleep until the held press qualifies as a long Power gesture. millis()
   // starts at reset, so time spent reaching this early boot check counts too.
-  unsigned long lastPressedMs = heldAtFirstSample ? sampleStart : 0;
-  bool seenPress = heldAtFirstSample;
-  bool wasPressed = heldAtFirstSample;
-  while (true) {
-    const unsigned long now = millis();
-    const bool pressed = inputMgr.isPowerButtonPhysicallyPressed();
-    if (pressed) {
-      if (!wasPressed && seenPress && wakeCheckGlitches < 0xFFFF) ++wakeCheckGlitches;
-      lastPressedMs = now;
-      seenPress = true;
-    } else {
-      const unsigned long releasedFor = seenPress ? now - lastPressedMs : now - sampleStart;
-      if (releasedFor > POWER_WAKE_RELEASE_TOLERANCE_MS) {
-        wakeCheckResult = seenPress ? WAKE_CHECK_RELEASED_DURING : WAKE_CHECK_RELEASED_BEFORE;
-        wakeCheckEndMs = now;
-        return false;
-      }
-    }
-    wasPressed = pressed;
-    if (now >= longHoldMs && pressed) break;
+  while (millis() < longHoldMs) {
     delay(1);
     inputMgr.update();
+    if (!inputMgr.isPowerButtonPhysicallyPressed()) return false;
   }
-  wakeCheckResult = WAKE_CHECK_OK;
-  wakeCheckEndMs = millis();
   return true;
 }
 

@@ -22,7 +22,6 @@
 #include "activities/reader/BookReadingStats.h"
 #include "activities/reader/GlobalReadingStats.h"
 #include "activities/reader/ReadingStatsUtils.h"
-#include "components/StreakCheck.h"
 #include "components/TouchRegistry.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
@@ -35,6 +34,7 @@
 #include "components/icons/night.h"
 #include "components/icons/streak.h"
 #include "fontIds.h"
+#include "util/LastRead.h"
 
 namespace {
 struct MinimalQuote {
@@ -158,8 +158,7 @@ void formatStreakStat(const GlobalReadingStats& globalStats, char* buf, const si
 Rect coverImageRectForFrame(const Rect& coverRect);
 
 void drawCenteredStatsRow(const GfxRenderer& renderer, const uint8_t* icon, const int iconSize, const char* label,
-                          const int regionTop, const int regionBottom, const bool inverted,
-                          const bool trailingCheck = false) {
+                          const int regionTop, const int regionBottom, const bool inverted) {
   const int screenWidth = renderer.getScreenWidth();
   const int regionHeight = regionBottom - regionTop;
   if (regionHeight <= 0) {
@@ -171,11 +170,9 @@ void drawCenteredStatsRow(const GfxRenderer& renderer, const uint8_t* icon, cons
   const int topY = regionTop + std::max(0, regionHeight - rowHeight) / 2;
   const int availableWidth = std::max(1, screenWidth - kStatsFooterSideInset * 2);
   const int iconTextGap = 10;
-  const int checkWidth = trailingCheck ? StreakCheck::trailingWidth() : 0;
-  const std::string text =
-      renderer.truncatedText(UI_10_FONT_ID, label, availableWidth - iconSize - iconTextGap - checkWidth);
+  const std::string text = renderer.truncatedText(UI_10_FONT_ID, label, availableWidth - iconSize - iconTextGap);
   const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, text.c_str());
-  const int blockWidth = iconSize + iconTextGap + textWidth + checkWidth;
+  const int blockWidth = iconSize + iconTextGap + textWidth;
   const int iconX = (screenWidth - blockWidth) / 2;
   const int iconY = topY + (rowHeight - iconSize) / 2;
   const int textX = iconX + iconSize + iconTextGap;
@@ -187,9 +184,6 @@ void drawCenteredStatsRow(const GfxRenderer& renderer, const uint8_t* icon, cons
     renderer.drawIconInverted(icon, iconX, iconY, iconSize, iconSize);
   }
   renderer.drawText(UI_10_FONT_ID, textX, textY, text.c_str(), inverted);
-  if (trailingCheck) {
-    StreakCheck::draw(renderer, textX + textWidth + StreakCheck::GAP, topY + rowHeight / 2, inverted);
-  }
 }
 
 int progressLabelBottomY(const GfxRenderer& renderer, const Rect& coverRect, const float progressPercent) {
@@ -221,7 +215,19 @@ void drawStatsOverlay(const GfxRenderer& renderer, const GlobalReadingStats& glo
   const int streakRegionTop = progressLabelBottomY(renderer, coverRect, progressPercent);
   const int streakRegionBottom = renderer.getScreenHeight();
   drawCenteredStatsRow(renderer, StreakIcon, kStatsFooterStreakIconSize, streakBuf, streakRegionTop, streakRegionBottom,
-                       inverted, StreakCheck::extendedToday(globalStats));
+                       inverted);
+
+  // CrossInk: last page turn, left of the progress percentage under the bar.
+  char lastRead[48];
+  if (progressPercent >= 0.0f && LastRead::format(lastRead, sizeof(lastRead))) {
+    const int durationY = coverRect.y + coverRect.height + kProgressBlockGap;
+    const int barY = durationY + renderer.getLineHeight(UI_10_FONT_ID) + kProgressBarGap;
+    const int labelY = barY + kProgressBarHeight + kProgressLabelGap;
+    const int percentW = renderer.getTextWidth(UI_10_FONT_ID, "100%");
+    const std::string text =
+        renderer.truncatedText(UI_10_FONT_ID, lastRead, std::max(1, coverRect.width - percentW - 12));
+    renderer.drawText(UI_10_FONT_ID, coverRect.x, labelY, text.c_str(), inverted);
+  }
 }
 
 Rect coverRectForScreen(const GfxRenderer& renderer, const Rect& rect) {

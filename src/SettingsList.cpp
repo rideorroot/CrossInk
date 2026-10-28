@@ -17,8 +17,6 @@ const std::vector<SettingInfo>& getBaseSettingsList() {
                           "sleepScreenCoverFilter", StrId::STR_CAT_DISPLAY));
     add(SettingInfo::Toggle(StrId::STR_QUICK_RESUME_TIMEOUT, &CrossPointSettings::quickResumeSleepScreen,
                             "quickResumeSleepScreen", StrId::STR_CAT_DISPLAY));
-    add(SettingInfo::Toggle(StrId::STR_STREAK_MIDNIGHT_REFRESH, &CrossPointSettings::sleepStreakMidnightRefresh,
-                            "sleepStreakMidnightRefresh", StrId::STR_CAT_DISPLAY));
     add(SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
                           {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}, "hideBatteryPercentage",
                           StrId::STR_CAT_DISPLAY));
@@ -212,6 +210,10 @@ const std::vector<SettingInfo>& getBaseSettingsList() {
                              ShortcutOptionCatalog::PowerButton));
     add(buildShortcutSetting(StrId::STR_LONG_PRESS_ACTION, &CrossPointSettings::longPwrBtn, "longPwrBtn",
                              ShortcutOptionCatalog::PowerButton));
+    add(SettingInfo::Enum(StrId::STR_WAKE_HOLD_TIME, &CrossPointSettings::wakeHoldTenths,
+                          {StrId::STR_WAKE_HOLD_0, StrId::STR_WAKE_HOLD_1, StrId::STR_WAKE_HOLD_2,
+                           StrId::STR_WAKE_HOLD_3, StrId::STR_WAKE_HOLD_4, StrId::STR_WAKE_HOLD_5},
+                          "wakeHoldTenths", StrId::STR_CAT_CONTROLS));
     add(buildShortcutSetting(StrId::STR_POWER_BUTTON_CHORD, &CrossPointSettings::powerChordAction, "powerChordAction",
                              ShortcutOptionCatalog::ButtonChord));
     add(buildShortcutSetting(StrId::STR_SIDE_BUTTON_CHORD, &CrossPointSettings::sideButtonChordAction,
