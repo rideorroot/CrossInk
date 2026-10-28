@@ -1209,14 +1209,14 @@ std::string wakeDiagTakeReport() {
   const esp_err_t openErr = nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle);
   if (openErr != ESP_OK) {
     char err[96];
-    snprintf(err, sizeof(err), "  diag v5: nvs_open failed (%d)\n", static_cast<int>(openErr));
+    snprintf(err, sizeof(err), "  diag v6: nvs_open failed (%d)\n", static_cast<int>(openErr));
     return err;
   }
   uint32_t boots = 0;
   const esp_err_t bootsErr = nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
   {
     char head[96];
-    snprintf(head, sizeof(head), "  diag v5: boots key %s\n", bootsErr == ESP_OK ? "ok" : "missing");
+    snprintf(head, sizeof(head), "  diag v6: boots key %s\n", bootsErr == ESP_OK ? "ok" : "missing");
     out += head;
   }
   WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
@@ -1469,7 +1469,11 @@ void setup() {
   const auto wakeupReason = gpio.getWakeupReason();
 #ifndef SIMULATOR
   wakeDiagBumpBootCounter();
-  const bool shortPressWakes = readWakeShortPressFromNvs();
+  // CrossInk: the X3 power circuit only switches the board on after the button
+  // has been held for a moment, so it already rejects accidental taps. A second
+  // firmware hold check on top made waking need ~1.5 s, so accept the wake as
+  // soon as the board is powered, whatever the short-press action is.
+  const bool shortPressWakes = readWakeShortPressFromNvs() || gpio.deviceIsX3();
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton &&
       !gpio.verifyPowerButtonWakeup(shortPressWakes, CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS)) {
     LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
