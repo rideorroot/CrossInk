@@ -422,6 +422,8 @@ void recordWakeTiming(const uint8_t reason) {
 #endif
 }
 
+std::string wakeDiagTakeReport();
+
 void flushWakeTiming(const uint32_t setupEndMs) {
   if (wakeTimingMagic != WAKE_TIMING_MAGIC || wakeTimingCount == 0) return;
   static const char* const results[] = {"skipped", "released-before-check", "released-during-check", "ok", "short-ok"};
@@ -441,6 +443,7 @@ void flushWakeTiming(const uint32_t setupEndMs) {
       text += line;
     }
   }
+  text += wakeDiagTakeReport();
   text += "--\n";
   String content = Storage.exists("/wake_timing.txt") ? Storage.readFile("/wake_timing.txt") : String();
   if (content.length() > 16000) content = content.substring(content.length() - 8000);
@@ -1146,6 +1149,82 @@ bool readWakeShortPressFromNvs() {
 #endif
 }
 
+// CrossInk wake diagnostics that survive the X3 switching itself off: a boot
+// counter bumped at every setup() start and the details of the last few
+// rejected wake checks, kept in NVS (flash) instead of RTC memory.
+constexpr char WAKE_DIAG_BOOTS_KEY[] = "wdBoots";
+constexpr char WAKE_DIAG_REJECTS_KEY[] = "wdRejects";
+struct WakeRejectRecord {
+  uint16_t checkStartMs;
+  uint16_t checkEndMs;
+  uint8_t result;
+  uint8_t heldAtStart;
+  uint16_t reserved;
+};
+constexpr size_t WAKE_DIAG_MAX_REJECTS = 8;
+
+void wakeDiagBumpBootCounter() {
+#ifndef SIMULATOR
+  nvs_handle_t handle;
+  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
+  uint32_t boots = 0;
+  nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
+  nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, boots + 1);
+  nvs_commit(handle);
+  nvs_close(handle);
+#endif
+}
+
+void wakeDiagRecordReject(const uint16_t startMs, const uint16_t endMs, const uint8_t result, const bool heldAtStart) {
+#ifndef SIMULATOR
+  nvs_handle_t handle;
+  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
+  WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
+  size_t size = sizeof(records);
+  if (nvs_get_blob(handle, WAKE_DIAG_REJECTS_KEY, records, &size) != ESP_OK) size = 0;
+  size_t count = size / sizeof(WakeRejectRecord);
+  if (count >= WAKE_DIAG_MAX_REJECTS) {
+    for (size_t i = 1; i < WAKE_DIAG_MAX_REJECTS; ++i) records[i - 1] = records[i];
+    count = WAKE_DIAG_MAX_REJECTS - 1;
+  }
+  records[count++] = {startMs, endMs, result, static_cast<uint8_t>(heldAtStart ? 1 : 0), 0};
+  nvs_set_blob(handle, WAKE_DIAG_REJECTS_KEY, records, count * sizeof(WakeRejectRecord));
+  nvs_commit(handle);
+  nvs_close(handle);
+#endif
+}
+
+// Returns a report of boots and rejects since the last successful boot and clears them.
+std::string wakeDiagTakeReport() {
+  std::string out;
+#ifndef SIMULATOR
+  nvs_handle_t handle;
+  if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return out;
+  uint32_t boots = 0;
+  nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
+  WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
+  size_t size = sizeof(records);
+  if (nvs_get_blob(handle, WAKE_DIAG_REJECTS_KEY, records, &size) != ESP_OK) size = 0;
+  const size_t count = size / sizeof(WakeRejectRecord);
+  static const char* const results[] = {"skipped", "released-before-check", "released-during-check", "ok", "short-ok"};
+  char line[160];
+  snprintf(line, sizeof(line), "  firmware starts since last report: %lu (this one included), rejected: %u\n",
+           static_cast<unsigned long>(boots), static_cast<unsigned>(count));
+  out += line;
+  for (size_t i = 0; i < count; ++i) {
+    snprintf(line, sizeof(line), "  rejected %u: check=%u-%ums result=%s heldAtStart=%u\n",
+             static_cast<unsigned>(i + 1), records[i].checkStartMs, records[i].checkEndMs,
+             records[i].result < 5 ? results[records[i].result] : "?", records[i].heldAtStart);
+    out += line;
+  }
+  nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, 0);
+  nvs_erase_key(handle, WAKE_DIAG_REJECTS_KEY);
+  nvs_commit(handle);
+  nvs_close(handle);
+#endif
+  return out;
+}
+
 void mirrorWakeShortPressToNvs() {
 #ifndef SIMULATOR
   const uint8_t expected = SETTINGS.shortPowerPressWakes() ? 1 : 0;
@@ -1372,11 +1451,16 @@ void setup() {
 
   const auto wakeupReason = gpio.getWakeupReason();
 #ifndef SIMULATOR
+  wakeDiagBumpBootCounter();
   const bool shortPressWakes = readWakeShortPressFromNvs();
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton &&
       !gpio.verifyPowerButtonWakeup(shortPressWakes, CrossPointSettings::POWER_BUTTON_LONG_PRESS_MS)) {
     LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
     recordWakeTiming(static_cast<uint8_t>(wakeupReason));
+#ifndef SIMULATOR
+    wakeDiagRecordReject(static_cast<uint16_t>(gpio.wakeCheckStartMs), static_cast<uint16_t>(gpio.wakeCheckEndMs),
+                         gpio.wakeCheckResult, gpio.wakeCheckHeldAtStart);
+#endif
     powerManager.startDeepSleep(gpio);
   }
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton) recordWakeTiming(static_cast<uint8_t>(wakeupReason));

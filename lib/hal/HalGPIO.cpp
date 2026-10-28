@@ -310,6 +310,7 @@ bool HalGPIO::verifyPowerButtonWakeup(const bool shortPressWakes, const uint16_t
 
   constexpr unsigned long POWER_WAKE_STABILITY_MS = 10;
   const bool heldAtFirstSample = inputMgr.isPowerButtonPhysicallyPressed();
+  wakeCheckHeldAtStart = heldAtFirstSample;
   const unsigned long sampleStart = millis();
   inputMgr.update();
   while (millis() - sampleStart < POWER_WAKE_STABILITY_MS || inputMgr.isDebouncePending()) {
