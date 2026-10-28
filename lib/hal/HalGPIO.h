@@ -153,6 +153,7 @@ class HalGPIO {
   uint32_t wakeCheckEndMs = 0;
   uint8_t wakeCheckResult = WAKE_CHECK_SKIPPED;
   bool wakeCheckHeldAtStart = false;
+  uint16_t wakeCheckGlitches = 0;
 
   // Check if USB is connected
   bool isUsbConnected() const;

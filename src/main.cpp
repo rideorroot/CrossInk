@@ -386,6 +386,7 @@ struct WakeTimingEntry {
   uint8_t result;
   uint8_t reason;
   uint32_t setupStartCycles;
+  uint16_t glitches;
 };
 constexpr uint32_t WAKE_TIMING_MAGIC = 0x574B544D;
 constexpr uint8_t WAKE_TIMING_SLOTS = 12;
@@ -418,7 +419,8 @@ void recordWakeTiming(const uint8_t reason) {
                                           static_cast<uint16_t>(gpio.wakeCheckEndMs),
                                           gpio.wakeCheckResult,
                                           reason,
-                                          bootSetupStartCycles};
+                                          bootSetupStartCycles,
+                                          gpio.wakeCheckGlitches};
 #endif
 }
 
@@ -432,9 +434,10 @@ void flushWakeTiming(const uint32_t setupEndMs) {
   for (uint8_t i = 0; i < wakeTimingCount; ++i) {
     const auto& e = wakeTimingEntries[i];
     const bool last = i + 1 == wakeTimingCount;
-    snprintf(line, sizeof(line), "attempt %u: reason=%u setupStart=%ums cycles=%lu check=%u-%ums result=%s%s\n", i + 1,
+    snprintf(line, sizeof(line),
+             "attempt %u: reason=%u setupStart=%ums cycles=%lu check=%u-%ums glitches=%u result=%s%s\n", i + 1,
              e.reason, e.setupStartMs, static_cast<unsigned long>(e.setupStartCycles), e.checkStartMs, e.checkEndMs,
-             e.result < 5 ? results[e.result] : "?", last ? "" : " (slept again)");
+             e.glitches, e.result < 5 ? results[e.result] : "?", last ? "" : " (slept again)");
     text += line;
     if (last) {
       snprintf(line, sizeof(line), "  boot finished at %lums reset=%d wake=%d rtcSincePowerOn=%llums\n",
@@ -1159,7 +1162,7 @@ struct WakeRejectRecord {
   uint16_t checkEndMs;
   uint8_t result;
   uint8_t heldAtStart;
-  uint16_t reserved;
+  uint16_t glitches;
 };
 constexpr size_t WAKE_DIAG_MAX_REJECTS = 8;
 
@@ -1178,7 +1181,8 @@ void wakeDiagBumpBootCounter() {
 #endif
 }
 
-void wakeDiagRecordReject(const uint16_t startMs, const uint16_t endMs, const uint8_t result, const bool heldAtStart) {
+void wakeDiagRecordReject(const uint16_t startMs, const uint16_t endMs, const uint8_t result, const bool heldAtStart,
+                          const uint16_t glitches) {
 #ifndef SIMULATOR
   nvs_handle_t handle;
   if (nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
@@ -1190,7 +1194,7 @@ void wakeDiagRecordReject(const uint16_t startMs, const uint16_t endMs, const ui
     for (size_t i = 1; i < WAKE_DIAG_MAX_REJECTS; ++i) records[i - 1] = records[i];
     count = WAKE_DIAG_MAX_REJECTS - 1;
   }
-  records[count++] = {startMs, endMs, result, static_cast<uint8_t>(heldAtStart ? 1 : 0), 0};
+  records[count++] = {startMs, endMs, result, static_cast<uint8_t>(heldAtStart ? 1 : 0), glitches};
   nvs_set_blob(handle, WAKE_DIAG_REJECTS_KEY, records, count * sizeof(WakeRejectRecord));
   nvs_commit(handle);
   nvs_close(handle);
@@ -1205,14 +1209,14 @@ std::string wakeDiagTakeReport() {
   const esp_err_t openErr = nvs_open(WAKE_NVS_NAMESPACE, NVS_READWRITE, &handle);
   if (openErr != ESP_OK) {
     char err[96];
-    snprintf(err, sizeof(err), "  diag v4: nvs_open failed (%d)\n", static_cast<int>(openErr));
+    snprintf(err, sizeof(err), "  diag v5: nvs_open failed (%d)\n", static_cast<int>(openErr));
     return err;
   }
   uint32_t boots = 0;
   const esp_err_t bootsErr = nvs_get_u32(handle, WAKE_DIAG_BOOTS_KEY, &boots);
   {
     char head[96];
-    snprintf(head, sizeof(head), "  diag v4: boots key %s\n", bootsErr == ESP_OK ? "ok" : "missing");
+    snprintf(head, sizeof(head), "  diag v5: boots key %s\n", bootsErr == ESP_OK ? "ok" : "missing");
     out += head;
   }
   WakeRejectRecord records[WAKE_DIAG_MAX_REJECTS] = {};
@@ -1225,9 +1229,9 @@ std::string wakeDiagTakeReport() {
            static_cast<unsigned long>(boots), static_cast<unsigned>(count));
   out += line;
   for (size_t i = 0; i < count; ++i) {
-    snprintf(line, sizeof(line), "  rejected %u: check=%u-%ums result=%s heldAtStart=%u\n",
+    snprintf(line, sizeof(line), "  rejected %u: check=%u-%ums result=%s heldAtStart=%u glitches=%u\n",
              static_cast<unsigned>(i + 1), records[i].checkStartMs, records[i].checkEndMs,
-             records[i].result < 5 ? results[records[i].result] : "?", records[i].heldAtStart);
+             records[i].result < 5 ? results[records[i].result] : "?", records[i].heldAtStart, records[i].glitches);
     out += line;
   }
   nvs_set_u32(handle, WAKE_DIAG_BOOTS_KEY, 0);
@@ -1472,7 +1476,7 @@ void setup() {
     recordWakeTiming(static_cast<uint8_t>(wakeupReason));
 #ifndef SIMULATOR
     wakeDiagRecordReject(static_cast<uint16_t>(gpio.wakeCheckStartMs), static_cast<uint16_t>(gpio.wakeCheckEndMs),
-                         gpio.wakeCheckResult, gpio.wakeCheckHeldAtStart);
+                         gpio.wakeCheckResult, gpio.wakeCheckHeldAtStart, gpio.wakeCheckGlitches);
 #endif
     powerManager.startDeepSleep(gpio);
   }
