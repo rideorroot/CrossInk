@@ -15,3 +15,10 @@ bool format(char* buf, size_t len);
 uint32_t pack(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute);
 
 }  // namespace LastRead
+
+class GfxRenderer;
+namespace LastRead {
+// Draws the stored time as a small centred footnote at the bottom edge and
+// returns its top y (the screen height when nothing was drawn).
+int drawFootnote(const GfxRenderer& renderer, bool black);
+}  // namespace LastRead

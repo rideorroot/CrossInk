@@ -578,7 +578,7 @@ class SimulatorSmokeTest {
     APP_STATE.lastReadStamp = 0;
     if (LastRead::format(text, sizeof(text))) fail("Last read shown without a stamp");
     APP_STATE.lastReadStamp = LastRead::pack(2026, 10, 28, 11, 10);
-    if (!LastRead::format(text, sizeof(text)) || std::string(text) != "Last read 28.10. 11:10")
+    if (!LastRead::format(text, sizeof(text)) || std::string(text) != "Last read on 28.10. 11:10")
       fail("Last read format: '%s'", text);
     LastRead::markNow();
     if (!LastRead::format(text, sizeof(text))) fail("Last read not captured from the clock");

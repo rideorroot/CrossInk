@@ -1,11 +1,13 @@
 #include "LastRead.h"
 
+#include <GfxRenderer.h>
 #include <I18n.h>
 
 #include <cstdio>
 
 #include "CrossPointState.h"
 #include "activities/reader/ReadingStatsUtils.h"
+#include "fontIds.h"
 
 namespace LastRead {
 
@@ -33,6 +35,17 @@ bool format(char* buf, const size_t len) {
   if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return false;
   snprintf(buf, len, tr(STR_LAST_READ_FORMAT), day, month, hour, minute);
   return true;
+}
+
+int drawFootnote(const GfxRenderer& renderer, const bool black) {
+  constexpr int BOTTOM_MARGIN = 6;
+  const int screenH = renderer.getScreenHeight();
+  char text[48];
+  if (!format(text, sizeof(text))) return screenH;
+  const int y = screenH - renderer.getLineHeight(SMALL_FONT_ID) - BOTTOM_MARGIN;
+  const int w = renderer.getTextWidth(SMALL_FONT_ID, text);
+  renderer.drawText(SMALL_FONT_ID, (renderer.getScreenWidth() - w) / 2, y, text, black);
+  return y;
 }
 
 }  // namespace LastRead

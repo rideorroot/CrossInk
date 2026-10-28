@@ -213,21 +213,10 @@ void drawStatsOverlay(const GfxRenderer& renderer, const GlobalReadingStats& glo
                        readerRegionBottom, inverted);
 
   const int streakRegionTop = progressLabelBottomY(renderer, coverRect, progressPercent);
-  const int streakRegionBottom = renderer.getScreenHeight();
+  // CrossInk: "Last read on ..." as a footnote; the streak row centres above it.
+  const int streakRegionBottom = LastRead::drawFootnote(renderer, inverted);
   drawCenteredStatsRow(renderer, StreakIcon, kStatsFooterStreakIconSize, streakBuf, streakRegionTop, streakRegionBottom,
                        inverted);
-
-  // CrossInk: last page turn, left of the progress percentage under the bar.
-  char lastRead[48];
-  if (progressPercent >= 0.0f && LastRead::format(lastRead, sizeof(lastRead))) {
-    const int durationY = coverRect.y + coverRect.height + kProgressBlockGap;
-    const int barY = durationY + renderer.getLineHeight(UI_10_FONT_ID) + kProgressBarGap;
-    const int labelY = barY + kProgressBarHeight + kProgressLabelGap;
-    const int percentW = renderer.getTextWidth(UI_10_FONT_ID, "100%");
-    const std::string text =
-        renderer.truncatedText(UI_10_FONT_ID, lastRead, std::max(1, coverRect.width - percentW - 12));
-    renderer.drawText(UI_10_FONT_ID, coverRect.x, labelY, text.c_str(), inverted);
-  }
 }
 
 Rect coverRectForScreen(const GfxRenderer& renderer, const Rect& rect) {

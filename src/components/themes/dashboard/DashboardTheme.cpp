@@ -539,21 +539,6 @@ void drawFooterStats(const GfxRenderer& renderer, const Rect& coverRect, const G
                             inverted);
 }
 
-// CrossInk: "Last read 28.10. 11:10", left-aligned above the sleep-screen footer.
-void drawLastReadLine(const GfxRenderer& renderer, const Rect& coverRect, const bool black) {
-  char lastRead[48];
-  if (!LastRead::format(lastRead, sizeof(lastRead))) return;
-  const int inset = contentInset(renderer);
-  const int buttonHintReserve = gpio.hasTouch() ? 0 : DashboardMetrics::values.buttonHintsHeight;
-  const int footerY = renderer.getScreenHeight() - buttonHintReserve - kFooterBottomGap;
-  const int footerCenterY = std::max(coverRect.y + coverRect.height + 120, footerY);
-  const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
-  const int y = footerCenterY - kFooterIconSize / 2 - 14 - lineH;
-  const std::string text =
-      renderer.truncatedText(UI_10_FONT_ID, lastRead, std::max(1, renderer.getScreenWidth() - inset * 2));
-  renderer.drawText(UI_10_FONT_ID, coverRect.x, y, text.c_str(), black);
-}
-
 void drawBookText(const GfxRenderer& renderer, const Rect& coverRect, const RecentBook& book,
                   const char* currentChapterTitle, const bool black = true) {
   const int inset = contentInset(renderer);
@@ -621,6 +606,6 @@ void DashboardTheme::drawSleepScreen(const GfxRenderer& renderer, const RecentBo
   drawBookText(renderer, coverRect, book, currentChapterTitle, inverted);
   if (SETTINGS.shouldTrackReadingStats()) {
     drawFooterStats(renderer, coverRect, globalStats, !inverted);
-    drawLastReadLine(renderer, coverRect, inverted);
+    LastRead::drawFootnote(renderer, inverted);
   }
 }
