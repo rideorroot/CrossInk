@@ -1350,6 +1350,20 @@ void setup() {
   }
 
   gpio.begin();
+#if !defined(SIMULATOR) && FREEINK_DEVICE_X3
+  // CrossInk: on the X3 the SD enable (GPIO13) also keeps the whole board
+  // powered; sleep drives it LOW and the board switches off. Assert it before
+  // the long-press wake check, as the factory firmware does, so the press only
+  // has to last for the check itself instead of until the SD card starts.
+  // A rejected wake still goes back to sleep through startDeepSleep(), which
+  // drives the pin LOW again.
+  if (gpio.deviceIsX3() && BoardConfig::ACTIVE.sd.powerEnable >= 0) {
+    const auto pin = static_cast<gpio_num_t>(BoardConfig::ACTIVE.sd.powerEnable);
+    gpio_hold_dis(pin);
+    pinMode(BoardConfig::ACTIVE.sd.powerEnable, OUTPUT);
+    digitalWrite(BoardConfig::ACTIVE.sd.powerEnable, BoardConfig::ACTIVE.sd.powerActiveHigh ? HIGH : LOW);
+  }
+#endif
   // Sticky shares Confirm and Power on one GPIO. Emit Power first so the
   // configured shortcut wins; MappedInputManager mirrors it back to Confirm
   // only on screens that explicitly allow the fallback.
